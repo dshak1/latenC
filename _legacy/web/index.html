@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LatencyLens — C++ Performance Observatory</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Literata:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Atmospheric background layers -->
+    <div class="bg-grain"></div>
+    <div class="bg-glow"></div>
+
+    <!-- ─── Header ────────────────────────────────────── -->
+    <header>
+        <div class="logo">
+            <div class="logo-mark">
+                <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+                    <rect x="2" y="18" width="4" height="8" rx="1" fill="#d4924b"/>
+                    <rect x="8" y="12" width="4" height="14" rx="1" fill="#d4924b" opacity="0.8"/>
+                    <rect x="14" y="6" width="4" height="20" rx="1" fill="#d4924b" opacity="0.6"/>
+                    <rect x="20" y="2" width="4" height="24" rx="1" fill="#7ea87e"/>
+                </svg>
+            </div>
+            <div class="logo-text">
+                <h1>LatencyLens</h1>
+                <span class="subtitle">C++ Performance Observatory</span>
+            </div>
+        </div>
+        <div class="sys-info" id="sysInfo">
+            <span class="chip" id="chipCompiler">—</span>
+            <span class="chip" id="chipArch">—</span>
+        </div>
+    </header>
+
+    <!-- ─── Navigation ────────────────────────────────── -->
+    <nav class="tabs">
+        <button class="tab active" data-tab="patterns">
+            <span class="tab-label">Pattern Explorer</span>
+            <span class="tab-indicator"></span>
+        </button>
+        <button class="tab" data-tab="analyze">
+            <span class="tab-label">Code Analyzer</span>
+            <span class="tab-indicator"></span>
+        </button>
+    </nav>
+
+    <!-- ─── Pattern Explorer View ─────────────────────── -->
+    <main id="view-patterns" class="view active">
+        <div class="section-intro reveal">
+            <h2 class="section-title">Explore Optimizations</h2>
+            <p class="section-desc">Select a pattern to see the performance difference — then benchmark it live on your machine.</p>
+        </div>
+
+        <div class="patterns-grid" id="patternsGrid">
+            <!-- Filled by JS -->
+        </div>
+
+        <!-- Pattern Detail Panel -->
+        <div class="detail-panel hidden" id="detailPanel">
+            <button class="close-btn" id="closeDetail">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                    <path d="M12 4L4 12M4 4l8 8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+            </button>
+            <div class="detail-header">
+                <span class="detail-category" id="detailCategory"></span>
+                <h2 id="detailName"></h2>
+                <p id="detailDesc"></p>
+            </div>
+
+            <div class="detail-explanation" id="detailExplanation"></div>
+
+            <div class="code-comparison">
+                <div class="code-block before">
+                    <div class="code-label">
+                        <span class="dot red"></span>
+                        <span id="beforeLabel">Before</span>
+                    </div>
+                    <pre><code id="beforeCode"></code></pre>
+                </div>
+                <div class="code-block after">
+                    <div class="code-label">
+                        <span class="dot green"></span>
+                        <span id="afterLabel">After</span>
+                    </div>
+                    <pre><code id="afterCode"></code></pre>
+                </div>
+            </div>
+
+            <!-- Benchmark Controls -->
+            <div class="bench-controls">
+                <div class="size-selector">
+                    <label>Data Size</label>
+                    <select id="benchSize">
+                        <option value="1000">1K elements</option>
+                        <option value="10000">10K elements</option>
+                        <option value="100000" selected>100K elements</option>
+                        <option value="1000000">1M elements</option>
+                        <option value="5000000">5M elements</option>
+                        <option value="10000000">10M elements</option>
+                    </select>
+                </div>
+                <button class="btn-primary" id="btnRunBenchmark">
+                    <span class="btn-text">Run Benchmark</span>
+                    <span class="btn-loading hidden">
+                        <span class="spinner"></span>
+                        Compiling…
+                    </span>
+                </button>
+                <button class="btn-secondary" id="btnRunScaling">
+                    Run Scaling Analysis
+                </button>
+            </div>
+
+            <!-- Results Area -->
+            <div class="results-area hidden" id="resultsArea">
+                <div class="result-cards">
+                    <div class="result-card slow">
+                        <span class="result-label" id="resultBeforeLabel">Before</span>
+                        <span class="result-value" id="resultBefore">—</span>
+                    </div>
+                    <div class="result-card speedup">
+                        <span class="result-label">Speedup</span>
+                        <span class="result-value" id="resultSpeedup">—</span>
+                    </div>
+                    <div class="result-card fast">
+                        <span class="result-label" id="resultAfterLabel">After</span>
+                        <span class="result-value" id="resultAfter">—</span>
+                    </div>
+                </div>
+                <div class="chart-container">
+                    <canvas id="benchChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Scaling Results -->
+            <div class="scaling-area hidden" id="scalingArea">
+                <h3>Scaling Analysis</h3>
+                <div class="chart-container wide">
+                    <canvas id="scalingChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- ─── Code Analyzer View ────────────────────────── -->
+    <main id="view-analyze" class="view">
+        <div class="analyzer-container">
+            <div class="analyzer-input">
+                <h2>Paste your C++ code</h2>
+                <p>LatencyLens will scan for performance anti-patterns and let you benchmark the fixes.</p>
+                <div class="textarea-wrap">
+                    <textarea id="codeInput" spellcheck="false" placeholder="// Paste your C++ code here...
+#include <map>
+#include <list>
+#include <memory>
+
+int main() {
+    std::map<int, int> lookup;
+    std::list<int> data;
+    std::shared_ptr<Widget> ptr;
+    // ...
+}"></textarea>
+                    <div class="textarea-fade"></div>
+                </div>
+                <button class="btn-primary" id="btnAnalyze">
+                    <span class="btn-text">Analyze Code</span>
+                    <span class="btn-loading hidden">
+                        <span class="spinner"></span>
+                        Scanning…
+                    </span>
+                </button>
+            </div>
+            <div class="analyzer-results hidden" id="analyzerResults">
+                <h2>Findings <span class="finding-count" id="findingCount"></span></h2>
+                <div id="findingsList"></div>
+            </div>
+        </div>
+    </main>
+
+    <footer>
+        <div class="footer-rule"></div>
+        <p>LatencyLens — Real C++ benchmarks compiled with <span id="footerCompiler">clang++</span> -O2. No simulation.</p>
+    </footer>
+
+    <script src="app.js"></script>
+</body>
+</html>
