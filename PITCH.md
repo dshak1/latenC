@@ -4,7 +4,7 @@
 
 ## Devpost (under 200 chars)
 
-C++ performance review inside VS Code. Real AST analysis, live compiled benchmarks, 12 anti-patterns detected. Not a linter. Not AI guessing. The actual cost, measured on your machine.
+C++ analyzing C++ inside VS Code. Native analysis engine, live compiled benchmarks, 20 anti-patterns detected. Not a linter. Not AI. Real cost, measured on your machine.
 
 ---
 
@@ -33,6 +33,8 @@ That's the problem LatencyLens is built around.
 ### What It Actually Does
 
 LatencyLens is a VS Code extension that catches C++ performance anti-patterns as you write, explains exactly why each one costs you, and proves it by compiling and running real benchmarks on your machine.
+
+The core analysis engine is itself written in C++. C++ analyzing C++. It compiles to a native binary on your machine with -O2, runs the detection in a single pass, and returns results in milliseconds. The extension invokes it as a subprocess and merges the detection results with explanations and benchmark data. If no compiler is available, it falls back to tree-sitter WASM, then to regex. Three tiers. Always works.
 
 Not estimates. Not simulations. Actual compiled C++ with clang++ or g++, measured in nanoseconds.
 

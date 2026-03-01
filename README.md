@@ -60,18 +60,20 @@ Optional: `clang++` or `g++` for live benchmarks (otherwise uses reference data)
 ## Architecture
 
 ```
-VS Code Extension (TypeScript, 504 KB)
-├── tree-sitter WASM parser (in-process)
-│   └── tree-sitter-cpp grammar — real AST, not regex
-├── 12 AST-based pattern detectors
-│   └── Context-aware: checks loop scope, preceding calls, parameter types
+VS Code Extension
+├── Native C++ analyzer (ll_analyzer binary)
+│   └── 20 context-aware pattern detectors in C++17
+│   └── Scope tracking, comment stripping, cross-line analysis
+├── tree-sitter WASM parser (fallback)
+│   └── tree-sitter-cpp grammar
 ├── Dual-mode benchmark runner
 │   ├── Local: compiles real C++ with clang++/g++ -O2
 │   └── Reference: pre-measured data (honestly labeled)
+├── TypeScript bridge (invokes C++ binary, merges results)
 └── Webview dashboard (Chart.js)
 ```
 
-**No Python. No server. No network calls.** Everything runs in the extension host process.
+**C++ analyzing C++.** The core computation is native. No Python. No server. No network calls.
 
 ---
 
@@ -79,21 +81,26 @@ VS Code Extension (TypeScript, 504 KB)
 
 ```
 latencylens/
-├── extension/                  # 👈 THE PRODUCT — VS Code extension (v0.2.0)
+├── extension/                  # VS Code extension (v0.2.0)
+│   ├── cpp/
+│   │   └── analyzer.cpp        # Native C++ analysis engine
 │   ├── src/
 │   │   ├── extension.ts        # Entry point, activation
-│   │   ├── astAnalyzer.ts      # Tree-sitter AST analysis engine
-│   │   ├── patterns.ts         # 12 pattern definitions + reference data
+│   │   ├── analyzer.ts         # Hybrid: native C++ -> tree-sitter -> regex
+│   │   ├── nativeAnalyzer.ts   # Bridge to C++ binary (subprocess)
+│   │   ├── astAnalyzer.ts      # Tree-sitter AST fallback
+│   │   ├── patterns.ts         # Pattern definitions + reference data
 │   │   ├── benchmarkRunner.ts  # Dual-mode benchmark execution
-│   │   ├── analyzer.ts         # Facade wrapping AST + benchmarks
 │   │   ├── dashboard.ts        # Webview panel (postMessage API)
 │   │   └── codelens.ts         # CodeLens provider
-│   ├── wasm/                   # Tree-sitter WASM binaries
+│   ├── wasm/                   # Tree-sitter WASM binaries (fallback)
+│   ├── scripts/
+│   │   └── build-analyzer.sh   # Builds the C++ analyzer binary
 │   └── package.json
 ├── examples/
-│   └── sample.cpp              # File with all 12 anti-patterns
-└── _legacy/                    # ⚠️ Deprecated v0.1.0 proof-of-concept
-    ├── server/                 # Flask/regex backend (superseded by tree-sitter)
+│   └── sample.cpp              # File with anti-patterns for testing
+└── _legacy/                    # Deprecated v0.1.0 proof-of-concept
+    ├── server/                 # Flask/regex backend (superseded)
     ├── web/                    # Standalone browser dashboard
     └── run.sh
 ```
@@ -115,9 +122,9 @@ latencylens/
 
 ## Built With
 
-- **Tree-sitter** — WebAssembly-based incremental parser for real C++ AST
-- **TypeScript** — Extension logic, pattern detection, benchmark orchestration
-- **C++17** — The benchmark code (compiled and executed on your hardware)
+- **C++17** — Native analysis engine (ll_analyzer) + benchmark programs
+- **Tree-sitter** — WebAssembly-based fallback parser for C++ AST
+- **TypeScript** — Extension UI, bridge layer, pattern metadata
 - **Chart.js** — Interactive visualizations in the dashboard
 - **Your CPU** — Where the real work happens
 

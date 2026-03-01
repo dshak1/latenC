@@ -44,15 +44,19 @@ You can toggle the whole extension off when you want to work without it and back
 
 ## How We Built It
 
-The entire extension is TypeScript running inside the VS Code extension host. No Python, no server, no pip install, no network calls. Just install the .vsix and open a .cpp file.
+The frontend is TypeScript running inside the VS Code extension host. No Python, no server, no pip install, no network calls. But the actual computation, the pattern detection and analysis, is a native C++ binary. C++ analyzing C++. That's the point.
 
-**Parsing: tree-sitter via WebAssembly**
+**Core engine: native C++ analyzer (ll_analyzer)**
 
-The core of the analysis is web-tree-sitter compiled to WASM, running in-process with the tree-sitter-cpp grammar. This gives real AST parsing, not regex. The extension walks the syntax tree node by node with context-aware detection logic.
+The analysis engine is a standalone C++ program compiled with clang++ -O2 -std=c++17. It reads a C++ source file (or stdin), runs 20 context-aware pattern detectors, and outputs detected findings as JSON to stdout. The extension invokes it as a subprocess via child_process.
 
-That matters because regex matches text and has no idea what surrounds it. The tree-sitter approach lets the detector for push_back-without-reserve walk the AST to check whether reserve was called in the same scope before the loop. The map detector checks whether any ordered operations are used on the container before suggesting unordered_map. The false sharing detector checks whether two atomics are declared adjacent in the same struct without padding. False positives in a diagnostic tool are worse than silence because you stop reading the warnings.
+The C++ analyzer handles all the structural analysis: comment stripping, brace-depth tracking for scope detection (is this push_back inside a loop?), variable tracking across lines (did this vector already get a reserve call?), and struct-level analysis (are these two atomics on the same cache line?). It runs in a single pass over the source and returns in milliseconds. The detection logic understands context because it tracks scope, not just text.
 
-There's also a full regex fallback for environments where the WASM fails to load, so the extension degrades gracefully instead of breaking.
+If the C++ binary is not compiled yet (first install), the extension auto-compiles it from source using whatever C++ compiler is on the machine. If no compiler is available at all, it falls back to tree-sitter WASM analysis in TypeScript, then to enhanced regex. Three tiers of fallback, always graceful degradation.
+
+**Tree-sitter fallback: WebAssembly**
+
+The secondary analysis path uses web-tree-sitter compiled to WASM with the tree-sitter-cpp grammar. This gives real AST parsing when the native binary is unavailable. Same detection logic, different implementation language. There's also a regex fallback below that for environments where even the WASM fails to load.
 
 **Benchmarks: dual-mode runner**
 
@@ -72,9 +76,11 @@ When you hit an error, you hear it. A sound effect fires on diagnostic triggers.
 
 ## Challenges
 
-Getting tree-sitter to run inside a VS Code extension host was the main technical hurdle. The WASM initialization path is specific and the extension host sandbox has constraints around file paths and module loading. Getting the locateFile configuration right so the parser could find tree-sitter.wasm reliably across different OS environments took iteration.
+Building the native C++ analyzer required solving the same problems the extension is designed to teach. Writing the scope tracker with brace-depth tracking, making the comment stripper handle block comments and trailing inline comments correctly, getting the reserve-pattern detector to ignore reserve calls that only exist inside comments. I kept running into my own anti-patterns while building the tool that detects them.
 
-The context-aware detection logic also required more careful AST traversal than expected. Simple text search would have taken an hour. Teaching the detector to understand scope, check preceding calls in the same block, and distinguish between container declarations and their usage required walking the tree in ways that aren't immediately obvious from the tree-sitter docs.
+Getting tree-sitter WASM to run inside a VS Code extension host as a fallback was another hurdle. The WASM initialization path is specific and the extension host sandbox has constraints around file paths and module loading. Getting the locateFile configuration right so the parser could find tree-sitter.wasm reliably across different OS environments took iteration.
+
+The auto-compilation of the C++ binary on first install had to handle all the edge cases: different compilers on different platforms, machines with no compiler at all, and the fallback chain when compilation fails.
 
 Writing benchmark code that produces stable, reproducible nanosecond measurements (preventing compiler optimizations from eliminating the thing you're trying to measure, using volatile sinks, using chrono with appropriate granularity) is its own problem. Getting numbers that match real-world intuition without being misleading took several rounds of iteration.
 
@@ -106,12 +112,12 @@ Ongoing error monitoring with aggregated reports across a codebase (how often ea
 
 ## Built With
 
-- TypeScript
-- VS Code Extension API
-- web-tree-sitter (WebAssembly)
-- tree-sitter-cpp grammar (WASM)
-- Chart.js (dashboard visualizations)
-- Node.js child_process (compiler invocation)
-- clang++ / g++ (live benchmark compilation)
-- C++17 (benchmark programs, chrono timing)
+- C++17 (native analysis engine, benchmark programs, chrono timing)
+- clang++ / g++ (compiles the analyzer and live benchmarks)
+- TypeScript (VS Code extension frontend, UI, bridge layer)
+- VS Code Extension API (diagnostics, CodeLens, commands, configuration)
 - VS Code Webview API (dashboard panel, postMessage communication)
+- web-tree-sitter / WebAssembly (fallback AST parser)
+- tree-sitter-cpp grammar (WASM fallback)
+- Chart.js (dashboard visualizations)
+- Node.js child_process (native binary and compiler invocation)
