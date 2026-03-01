@@ -1,4 +1,4 @@
-# LatencyLens ⚡
+# LatencyLens 
 
 **See the cost of your C++ code.**
 
