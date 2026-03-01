@@ -1,83 +1,101 @@
-# LatencyLens — C++ Performance Observatory
+# LatencyLens
 
-> Detect C++ performance anti-patterns with **AST analysis**, see explanations, and run **real compiled benchmarks** — all inside VS Code. **Zero external dependencies.**
+A VS Code extension that detects C++ performance anti-patterns using AST analysis and proves the fix with real benchmarks compiled on your machine.
 
-## Features
+## Why This Exists
 
-- **Tree-sitter AST Analysis** — Context-aware detection that understands your code structure, not just text patterns
-- **Inline Diagnostics** — Squiggly warnings on performance anti-patterns as you type
-- **CodeLens Benchmarks** — Click "⚡ Benchmark" above any detected pattern to compile & run a real C++ benchmark
-- **Interactive Dashboard** — Full webview with pattern explorer, code analyzer, scaling charts
-- **12 Anti-Patterns** — map→unordered_map, push_back without reserve, AoS→SoA, false sharing, virtual dispatch, and more
-- **Dual-Mode Benchmarks** — Local compilation when a C++ compiler is available, pre-measured reference data otherwise (clearly labeled)
-- **Zero Dependencies** — No Python, no server, no pip install. Just install and go.
+I started learning C++ for quantitative finance. I'd write what I thought was clean code, then a friend who works at a prop shop would look at it and immediately spot three performance mistakes. Not bugs. The code compiled fine. It just ran 10x slower than it needed to.
 
-## How It Works
+The problem is that C++ lets you write slow code that looks correct. `std::map` compiles just as easily as `std::unordered_map`. Passing a vector by value causes zero warnings. `std::endl` in a loop flushes on every iteration and your linter says nothing.
 
-LatencyLens runs entirely inside VS Code — no external servers or processes:
+I took a computer architecture class (CMPT 450) that covered cache hierarchies, branch prediction, and memory layout. I already knew why these things were slow at the hardware level. What I didn't have was a tool that connected that knowledge to the code I was writing.
 
-1. **Parses** your C++ code using [tree-sitter](https://tree-sitter.github.io/) via WebAssembly — real AST, not regex
-2. **Detects** 12 performance anti-patterns by walking the syntax tree with context-aware rules (e.g., checks for preceding `reserve()`, verifies loop context, inspects parameter declarations)
-3. **Benchmarks** by compiling real C++ programs with your local `clang++` / `g++` when available
-4. **Falls back** to pre-measured reference data on machines without a compiler — always honestly labeled as "📊 Reference data"
-5. **Visualizes** results in Chart.js-powered interactive charts
+LatencyLens is that tool. It catches the patterns a senior developer would flag during code review, explains why they're slow at the hardware level, and then proves it with actual nanosecond measurements on your machine.
 
-## Requirements
+This is not a prototype. It ships as a 500KB `.vsix` with zero external dependencies. No Python server, no Flask, no network calls. Everything runs in the extension host and your local C++ compiler.
 
-- **VS Code 1.85+**
-- **Optional:** `clang++` or `g++` with C++17 support (for live benchmarks — otherwise uses reference data)
+## What It Does
 
-That's it. No Python, no pip, no server.
+1. You open a C++ file
+2. LatencyLens parses it into an AST using tree-sitter (not regex)
+3. 26 context-aware detectors check for performance anti-patterns
+4. You see inline diagnostics explaining what's slow and why
+5. Click "Benchmark" above any pattern to compile and run a real before/after test
+6. A result panel shows the timing, the fix, and what the numbers mean in practice
 
-## Getting Started
+**26 patterns detected across 8 categories:**
 
-1. Install the `.vsix` — `code --install-extension latencylens-0.2.0.vsix`
-2. Open a `.cpp` or `.c` file
-3. LatencyLens activates automatically and begins analyzing
-4. Click the ⚡ icon in the editor title bar to open the dashboard
+| Category | Patterns |
+|---|---|
+| Data Structures | `std::map` vs `unordered_map`, `std::list` vs `vector`, missing `reserve()` |
+| Cache and Memory | AoS vs SoA layout, false sharing, pass by value |
+| Compiler Hints | `virtual` vs CRTP, `constexpr`, branch prediction, loop size hoisting |
+| Smart Pointers | `shared_ptr` vs `unique_ptr`, raw `new`/`delete`, missing `make_unique` |
+| I/O and Strings | `std::endl` vs `\n`, `string` copy vs `string_view`, sync I/O overhead |
+| Move Semantics | missing `std::move`, `return std::move(local)` anti-pattern, `emplace_back` |
+| Correctness | `using namespace std`, C arrays vs `std::array`, missing virtual destructor |
+| Runtime Cost | `pow()` vs multiply, `dynamic_cast` overhead, exceptions in hot paths |
 
-## Commands
+Each detection includes:
+- AST context checks (is this inside a loop? is there a `reserve()` nearby? is this in a comment?)
+- Before/after code showing the exact fix
+- A fix hint explaining when and why to apply it
+- A speedup context message translating the numbers into real-world impact
+- Links to cppreference.com and C++ Core Guidelines
 
-| Command | Description |
-|---------|-------------|
-| `LatencyLens: Open Dashboard` | Open the interactive dashboard panel |
-| `LatencyLens: Analyze Current File` | Manually trigger analysis |
-| `LatencyLens: Benchmark Pattern` | Run a benchmark for a specific pattern |
+## How Benchmarks Work
 
-## Settings
+When you click "Benchmark" above a detected pattern:
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `latencylens.analyzeOnSave` | `true` | Auto-analyze on save |
-| `latencylens.showCodeLens` | `true` | Show benchmark CodeLens |
-| `latencylens.analysisMode` | `auto` | Analysis engine: `auto`, `tree-sitter`, or `regex` |
+1. An isolated C++ file is written to a temp directory
+2. Your local compiler (`g++` or `clang++`) compiles it with `-O2`
+3. The benchmark runs and outputs JSON with nanosecond timing
+4. The result panel shows before/after bars, speedup factor, code diff, and fix guidance
+
+The benchmark does not modify your source code. If no compiler is found, it falls back to reference data measured on Apple M1 with clang++ -O2. Reference results are clearly labeled.
 
 ## Architecture
 
 ```
-VS Code Extension (TypeScript)
-├── tree-sitter WASM parser (in-process)
-│   └── tree-sitter-cpp grammar
-├── 12 AST-based pattern detectors
-├── Benchmark runner (local compiler / reference data)
-└── Webview dashboard (Chart.js)
+Extension Host (TypeScript, ~500KB packaged)
+  |
+  +-- tree-sitter WASM parser
+  |     Loads C++ grammar, parses source into AST
+  |     26 detector functions walk the tree with context
+  |
+  +-- Benchmark runner
+  |     Writes temp .cpp, shells out to g++/clang++ -O2
+  |     Parses JSON output, falls back to reference data
+  |
+  +-- VS Code integration
+        Diagnostics (inline warnings)
+        CodeLens ("Benchmark" above each pattern)
+        Result panel (timing bars, code diff, fix guidance)
+        Dashboard (pattern browser)
 ```
 
-No network calls. No child processes for analysis. Everything runs in the extension host.
+No Python. No server. No network calls. Pure TypeScript + your C++ compiler.
 
-## Detected Patterns
+## Install
 
-| Pattern | Category | What It Finds |
-|---------|----------|---------------|
-| map → unordered_map | Containers | `std::map` used without ordering requirement |
-| list → vector | Containers | `std::list` where `std::vector` would be faster |
-| reserve before push_back | Containers | Missing `reserve()` before loop with `push_back` |
-| virtual → CRTP | Dispatch | Virtual dispatch in performance-critical paths |
-| AoS → SoA | Memory | Array-of-structs that would benefit from SoA layout |
-| Branch → branchless | Branching | Conditional logic replaceable with arithmetic |
-| shared_ptr → unique_ptr | Smart Pointers | `shared_ptr` where single ownership suffices |
-| False sharing | Concurrency | Adjacent atomics on the same cache line |
-| Pass by value | Function Calls | Large objects passed by value instead of reference |
-| pow → multiply | Math | `std::pow` with small integer exponents |
-| endl → \\n | I/O | `std::endl` forcing unnecessary flushes |
-| Loop size hoist | Loops | `.size()` called every iteration in loop condition |
+```bash
+cd extension
+npm install && npm run compile
+npx @vscode/vsce package --no-dependencies --allow-missing-repository
+code --install-extension latencylens-*.vsix
+```
+
+Open any `.cpp` file. Analysis runs automatically.
+
+## Commands
+
+| Command | Description |
+|---|---|
+| `LatencyLens: Open Dashboard` | Browse all 26 patterns with explanations |
+| `LatencyLens: Analyze Current File` | Run analysis on the active editor |
+| `LatencyLens: Toggle On/Off` | Enable or disable analysis |
+
+## Requirements
+
+- VS Code 1.85+
+- C++ compiler (optional, for live benchmarks)

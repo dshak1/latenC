@@ -685,6 +685,192 @@ function findChild(node: any, type: string): any {
     return null;
 }
 
+// ── mCoding-Inspired Detectors ──────────────────────────────
+
+/**
+ * detect 'using namespace std' at file/namespace scope.
+ * Skips: inside function bodies (less harmful), inside comments.
+ */
+const detectUsingNamespaceStd: Detector = (tree, source) => {
+    const matches: ASTMatch[] = [];
+    walkTree(tree.rootNode, (node: any) => {
+        if (node.type === 'using_declaration' || node.type === 'preproc_directive' || node.type.includes('using')) {
+            const text = node.text;
+            if (/\busing\s+namespace\s+std\s*;/.test(text)) {
+                if (!isInsideComment(node)) {
+                    // Higher confidence at file scope than inside functions
+                    const insideFunction = hasAncestorOfType(node, ['function_definition', 'compound_statement']);
+                    matches.push({
+                        line: node.startPosition.row + 1,
+                        text: getLineText(source, node.startPosition.row),
+                        nodeType: node.type,
+                        confidence: insideFunction ? 'low' : 'high',
+                    });
+                }
+            }
+        }
+    });
+    return matches;
+};
+
+/**
+ * detect C-style arrays (int arr[N]) that should be std::array.
+ * Skips: main(int argc, char* argv[]), string literals.
+ */
+const detectCArrayVsStdArray: Detector = (tree, source) => {
+    const matches: ASTMatch[] = [];
+    walkTree(tree.rootNode, (node: any) => {
+        if (node.type === 'array_declarator') {
+            const text = node.text;
+            // Skip argv, string arrays used in main signature
+            if (/\bargv\b/.test(text) || /\bchar\s*\*\s*\[/.test(text)) { return; }
+            if (!isInsideComment(node)) {
+                const lineText = getLineText(source, node.startPosition.row);
+                // Skip if it is already std::array
+                if (/std\s*::\s*array/.test(lineText)) { return; }
+                matches.push({
+                    line: node.startPosition.row + 1,
+                    text: lineText,
+                    nodeType: node.type,
+                    confidence: 'medium',
+                });
+            }
+        }
+    });
+    return matches;
+};
+
+/**
+ * detect raw new/delete usage that should use smart pointers.
+ * Skips: placement new, operator new overloads.
+ */
+const detectRawNewDelete: Detector = (tree, source) => {
+    const matches: ASTMatch[] = [];
+    walkTree(tree.rootNode, (node: any) => {
+        if (node.type === 'new_expression' || node.type === 'delete_expression') {
+            const text = node.text;
+            // Skip placement new
+            if (/\bnew\s*\(/.test(text) && node.type === 'new_expression') {
+                const lineText = getLineText(source, node.startPosition.row);
+                if (/\bnew\s*\([^)]+\)\s+\w/.test(lineText)) { return; } // placement new
+            }
+            // Skip operator new/delete overloads
+            if (hasAncestorOfType(node, ['operator_cast'])) { return; }
+            const lineText = getLineText(source, node.startPosition.row);
+            if (/\boperator\s+(new|delete)\b/.test(lineText)) { return; }
+            // Skip if already wrapped in make_unique/make_shared
+            if (/make_unique|make_shared/.test(lineText)) { return; }
+            if (!isInsideComment(node)) {
+                matches.push({
+                    line: node.startPosition.row + 1,
+                    text: lineText,
+                    nodeType: node.type,
+                    confidence: 'high',
+                });
+            }
+        }
+    });
+    return matches;
+};
+
+/**
+ * detect base classes with virtual methods but non-virtual destructors.
+ */
+const detectMissingVirtualDtor: Detector = (tree, source) => {
+    const matches: ASTMatch[] = [];
+    walkTree(tree.rootNode, (node: any) => {
+        if (node.type === 'class_specifier' || node.type === 'struct_specifier') {
+            let hasVirtualMethod = false;
+            let hasVirtualDestructor = false;
+            let hasAnyDestructor = false;
+            let className = '';
+
+            // Get class name
+            for (let i = 0; i < node.childCount; i++) {
+                const child = node.child(i);
+                if (child.type === 'type_identifier') {
+                    className = child.text;
+                }
+            }
+
+            // Walk the class body
+            walkTree(node, (inner: any) => {
+                if (inner.type === 'function_definition' || inner.type === 'declaration') {
+                    const text = inner.text;
+                    if (/\bvirtual\b/.test(text) && !/~/.test(text)) {
+                        hasVirtualMethod = true;
+                    }
+                    if (/~\s*\w+/.test(text)) {
+                        hasAnyDestructor = true;
+                        if (/\bvirtual\b/.test(text)) {
+                            hasVirtualDestructor = true;
+                        }
+                    }
+                }
+            });
+
+            if (hasVirtualMethod && !hasVirtualDestructor) {
+                matches.push({
+                    line: node.startPosition.row + 1,
+                    text: getLineText(source, node.startPosition.row),
+                    nodeType: node.type,
+                    confidence: hasAnyDestructor ? 'high' : 'medium',
+                });
+            }
+        }
+    });
+    return matches;
+};
+
+/**
+ * detect return std::move(local_variable) which prevents NRVO.
+ */
+const detectReturnStdMove: Detector = (tree, source) => {
+    const matches: ASTMatch[] = [];
+    walkTree(tree.rootNode, (node: any) => {
+        if (node.type === 'return_statement') {
+            const text = node.text;
+            if (/return\s+std\s*::\s*move\s*\(/.test(text)) {
+                if (!isInsideComment(node)) {
+                    matches.push({
+                        line: node.startPosition.row + 1,
+                        text: getLineText(source, node.startPosition.row),
+                        nodeType: node.type,
+                        confidence: 'high',
+                    });
+                }
+            }
+        }
+    });
+    return matches;
+};
+
+/**
+ * detect std::unique_ptr<T>(new T) or std::shared_ptr<T>(new T)
+ * that should use make_unique / make_shared.
+ */
+const detectMissingMakeUnique: Detector = (tree, source) => {
+    const matches: ASTMatch[] = [];
+    walkTree(tree.rootNode, (node: any) => {
+        // Look for smart pointer construction with new
+        if (node.type === 'call_expression' || node.type === 'template_function' || node.type === 'declaration') {
+            const text = node.text;
+            if (/\b(unique_ptr|shared_ptr)\s*<[^>]+>\s*\(\s*new\b/.test(text) ||
+                /\b(std\s*::\s*)(unique_ptr|shared_ptr)\s*<[^>]+>\s*\(\s*new\b/.test(text)) {
+                if (!isInsideComment(node)) {
+                    matches.push({
+                        line: node.startPosition.row + 1,
+                        text: getLineText(source, node.startPosition.row),
+                        nodeType: node.type,
+                        confidence: 'high',
+                    });
+                }
+            }
+        }
+    });
+    return matches;
+};
+
 // ── Detector Registry ───────────────────────────────────────
 
 const DETECTORS: Map<string, Detector> = new Map([
@@ -708,6 +894,12 @@ const DETECTORS: Map<string, Detector> = new Map([
     ['sort_for_prediction', detectSortForPrediction],
     ['dynamic_cast_overhead', detectDynamicCastOverhead],
     ['sync_io_overhead', detectSyncIoOverhead],
+    ['using_namespace_std', detectUsingNamespaceStd],
+    ['c_array_vs_std_array', detectCArrayVsStdArray],
+    ['raw_new_delete', detectRawNewDelete],
+    ['missing_virtual_dtor', detectMissingVirtualDtor],
+    ['return_std_move', detectReturnStdMove],
+    ['missing_make_unique', detectMissingMakeUnique],
 ]);
 
 // ── Enhanced Regex Fallback ─────────────────────────────────
@@ -750,6 +942,19 @@ const REGEX_PATTERNS: RegexPattern[] = [
     { id: 'dynamic_cast_overhead', regex: /\bdynamic_cast\s*</ },
     { id: 'sync_io_overhead', regex: /\bstd\s*::\s*cin\s*>>/,
       contextCheck: (_line, allLines) => !allLines.some(l => /sync_with_stdio\s*\(\s*false\s*\)/.test(l)) },
+    { id: 'using_namespace_std', regex: /\busing\s+namespace\s+std\s*;/ },
+    { id: 'c_array_vs_std_array', regex: /\b(int|double|float|char|long|unsigned|short|size_t)\s+\w+\s*\[\s*\w+\s*\]/,
+      contextCheck: (line) => !/argv/.test(line) && !/std\s*::\s*array/.test(line) },
+    { id: 'raw_new_delete', regex: /\b(new\s+\w+|delete\s+\w+|delete\s*\[\s*\])/,
+      contextCheck: (line) => !/make_unique|make_shared|placement|operator\s+(new|delete)/.test(line) },
+    { id: 'missing_virtual_dtor', regex: /\bvirtual\s+\w+\s+\w+\s*\(/,
+      contextCheck: (_line, allLines, idx) => {
+          // Check if a virtual destructor exists nearby (within class)
+          const classRange = allLines.slice(Math.max(0, idx - 50), Math.min(allLines.length, idx + 50)).join('\n');
+          return !/virtual\s*~/.test(classRange);
+      }},
+    { id: 'return_std_move', regex: /\breturn\s+std\s*::\s*move\s*\(/ },
+    { id: 'missing_make_unique', regex: /\b(unique_ptr|shared_ptr)\s*<[^>]+>\s*\(\s*new\b/ },
 ];
 
 function analyzeWithRegex(source: string): Map<string, ASTMatch[]> {

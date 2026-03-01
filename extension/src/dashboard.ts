@@ -29,7 +29,7 @@ export class DashboardPanel {
 
         const panel = vscode.window.createWebviewPanel(
             DashboardPanel.viewType,
-            '⚡ LatencyLens',
+            'LatencyLens',
             column,
             {
                 enableScripts: true,
@@ -131,7 +131,7 @@ ${DASHBOARD_CSS}
 <body>
     <header>
         <div class="logo">
-            <span class="logo-icon">⚡</span>
+            <span class="logo-icon">L</span>
             <h1>LatencyLens</h1>
             <span class="subtitle">C++ Performance Observatory</span>
         </div>

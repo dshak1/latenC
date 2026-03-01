@@ -1,5 +1,5 @@
 /**
- * LatencyLens — C++ Performance Anti-Pattern Definitions
+ * LatencyLens - C++ Performance Anti-Pattern Definitions
  *
  * All 12 patterns with:
  * - AST-aware detection (works with tree-sitter node types)
@@ -49,7 +49,7 @@ export const PATTERNS: Pattern[] = [
         category: 'Data Structures',
         short_desc: 'Tree traversal (O(log n)) vs hash lookup (O(1))',
         explanation:
-            'std::map uses a red-black tree — every lookup traverses O(log n) nodes, ' +
+            'std::map uses a red-black tree - every lookup traverses O(log n) nodes, ' +
             'each potentially a cache miss. std::unordered_map uses a hash table with ' +
             'O(1) amortized lookups. For integer/string keys where ordering isn\'t needed, ' +
             'unordered_map can be 2–5× faster. The gap widens with more elements as tree ' +
@@ -59,11 +59,11 @@ export const PATTERNS: Pattern[] = [
         after_label: 'std::unordered_map',
         before_snippet: `std::map<int, int> m;
 for (int i = 0; i < N; i++) m[keys[i]] = i;
-auto it = m.find(key);  // O(log n) — tree traversal`,
+auto it = m.find(key);  // O(log n) -- tree traversal`,
         after_snippet: `std::unordered_map<int, int> m;
 m.reserve(N);
 for (int i = 0; i < N; i++) m[keys[i]] = i;
-auto it = m.find(key);  // O(1) — hash lookup`,
+auto it = m.find(key);  // O(1) -- hash lookup`,
         reference_benchmarks: { before_ns: 98_000_000, after_ns: 32_000_000, speedup: 3.06, data_size: 100_000, note: 'Apple M1, clang++ -O2, integer keys' },
         fix_hint: 'Replace std::map with std::unordered_map and add .reserve(N) if you know the size. Only keep std::map if you need sorted iteration.',
         speedup_context: 'At 100K lookups, you saved ~66ms per batch. In a trading system processing market data, that is the difference between seeing the price and missing the fill.',
@@ -72,7 +72,7 @@ auto it = m.find(key);  // O(1) — hash lookup`,
             { title: 'std::map', url: 'https://en.cppreference.com/w/cpp/container/map' },
         ],
         further_reading: [
-            { title: 'Hash Table vs Red-Black Tree — When to Use Which', url: 'https://isocpp.org/wiki/faq/containers#vector-vs-list' },
+            { title: 'Hash Table vs Red-Black Tree - When to Use Which', url: 'https://isocpp.org/wiki/faq/containers#vector-vs-list' },
             { title: 'Chandler Carruth: Efficiency with Algorithms (CppCon)', url: 'https://www.youtube.com/watch?v=fHNmRkzxHWs' },
         ],
         benchmark_code: `#include <iostream>
@@ -137,7 +137,7 @@ int main() {
         explanation:
             'std::list allocates each node separately on the heap, scattering data across memory. ' +
             'Iterating chases pointers, causing L1/L2 cache misses on almost every access. ' +
-            'std::vector stores elements contiguously — the hardware prefetcher loads the next ' +
+            'std::vector stores elements contiguously - the hardware prefetcher loads the next ' +
             'cache line automatically, hitting L1 cache ~95% of the time. This alone can give ' +
             '5–20× speedup on iteration-heavy workloads.',
         severity: 'high',
@@ -207,7 +207,7 @@ int main() {
         category: 'Memory Allocation',
         short_desc: 'Eliminate reallocation and copying overhead',
         explanation:
-            'Without reserve(), vector doubles its capacity when full — requiring a new allocation, ' +
+            'Without reserve(), vector doubles its capacity when full - requiring a new allocation, ' +
             'copying all existing elements, and freeing old memory. For N insertions, this causes ' +
             'O(log N) reallocations, each copying all elements. With reserve(N), you get one ' +
             'allocation upfront. Big wins on large vectors.',
@@ -279,7 +279,7 @@ int main() {
         explanation:
             'Virtual function calls go through a vtable pointer → vtable → function pointer. ' +
             'This is 2 indirections + prevents inlining. CRTP (Curiously Recurring Template Pattern) ' +
-            'resolves the call at compile time — the compiler can inline the function body entirely.',
+            'resolves the call at compile time - the compiler can inline the function body entirely.',
         severity: 'medium',
         before_label: 'Virtual dispatch',
         after_label: 'CRTP (compile-time)',
@@ -360,7 +360,7 @@ int main() {
         category: 'Cache Optimization',
         short_desc: 'Load only what you need into cache lines',
         explanation:
-            'AoS packs all fields together — accessing one field loads ALL fields into the cache line, ' +
+            'AoS packs all fields together - accessing one field loads ALL fields into the cache line, ' +
             'wasting bandwidth. SoA stores each field in its own contiguous array. Critical in ' +
             'data-oriented design (games, HPC, finance). Can give 2–10× speedup when you only ' +
             'access 1-2 fields out of many. Also enables SIMD auto-vectorization.',
@@ -370,7 +370,7 @@ int main() {
         before_snippet: `struct Particle {
     float x, y, z;        // 12 bytes
     float vx, vy, vz;     // 12 bytes
-    float mass; int id;    // 8 bytes — WASTED in cache
+    float mass; int id;    // 8 bytes -- WASTED in cache
 };
 // Updating position loads mass+id into cache for nothing`,
         after_snippet: `struct Particles {
@@ -379,7 +379,7 @@ int main() {
     vector<float> mass;         // separate
     vector<int> id;             // separate
 };
-// Only position+velocity data enters cache — SIMD friendly`,
+// Only position+velocity data enters cache -- SIMD friendly`,
         reference_benchmarks: { before_ns: 18_000_000, after_ns: 5_500_000, speedup: 3.27, data_size: 2_000_000, note: 'Apple M1, clang++ -O2, position update' },
         fix_hint: 'Restructure your struct so each field is a separate contiguous array. Group fields that are accessed together. This is the core of Data-Oriented Design.',
         speedup_context: 'You loaded 32 bytes of struct data per cache line but only needed 12. SoA means every byte in the cache line is useful. Multiply this by 2M particles and you just reclaimed 40MB of wasted memory bandwidth.',
@@ -446,7 +446,7 @@ int main() {
         short_desc: 'Eliminate branch mispredictions with arithmetic',
         explanation:
             'Modern CPUs predict branches to keep the pipeline full. When predictions fail ' +
-            '(~50% on random data), the pipeline flushes — costing 10–20 cycles per miss. ' +
+            '(~50% on random data), the pipeline flushes - costing 10–20 cycles per miss. ' +
             'Branchless code uses arithmetic/bitwise ops to compute the result without any branch.',
         severity: 'high',
         before_label: 'if/else branching',
@@ -518,9 +518,9 @@ int main() {
         category: 'Smart Pointers',
         short_desc: 'Atomic ref counting overhead vs zero-cost ownership',
         explanation:
-            'shared_ptr maintains an atomic reference count — every copy/destroy does an atomic ' +
+            'shared_ptr maintains an atomic reference count - every copy/destroy does an atomic ' +
             'increment/decrement, which is a memory fence that stalls the CPU pipeline. unique_ptr ' +
-            'has ZERO overhead — it\'s a raw pointer with RAII semantics. The compiler optimizes it completely.',
+            'has ZERO overhead - it\'s a raw pointer with RAII semantics. The compiler optimizes it completely.',
         severity: 'medium',
         before_label: 'std::shared_ptr',
         after_label: 'std::unique_ptr',
@@ -530,7 +530,7 @@ ptrs.push_back(p);  // Atomic ref count ++
 // Cache line bouncing in multithreaded code`,
         after_snippet: `auto p = std::make_unique<Widget>();
 ptrs.push_back(std::move(p));
-// ZERO overhead — same as raw pointer
+// ZERO overhead -- same as raw pointer
 // Compiler optimizes completely away`,
         reference_benchmarks: { before_ns: 180_000_000, after_ns: 95_000_000, speedup: 1.89, data_size: 5_000_000, note: 'Apple M1, clang++ -O2' },
         fix_hint: 'Default to std::unique_ptr for single ownership. Only use shared_ptr when ownership is genuinely shared across multiple owners with different lifetimes. Consider passing raw pointers/references for non-owning access.',
@@ -591,7 +591,7 @@ int main() {
         explanation:
             'When two threads write to variables on the SAME cache line (64 bytes on x86), ' +
             'the cache coherence protocol forces the cache line to bounce between cores on every write. ' +
-            'This is "false sharing" — fix with alignas(64).',
+            'This is "false sharing" - fix with alignas(64).',
         severity: 'high',
         before_label: 'Variables share cache line',
         after_label: 'Cache-line padded',
@@ -607,7 +607,7 @@ struct Counters {
     PaddedCounter a;  // Own cache line
     PaddedCounter b;  // Own cache line
 };
-// Each core owns its cache line — no bouncing`,
+// Each core owns its cache line -- no bouncing`,
         reference_benchmarks: { before_ns: 650_000_000, after_ns: 190_000_000, speedup: 3.42, data_size: 50_000_000, note: 'Apple M1, clang++ -O2, 2 threads' },
         fix_hint: 'Pad each thread-local variable to a full cache line with alignas(64) or std::hardware_destructive_interference_size. Group per-thread data in its own struct aligned to 64 bytes.',
         speedup_context: 'Two threads wrote to the same 64-byte cache line, forcing the MESI protocol to bounce it between cores on every write. Adding 56 bytes of padding gave a 3.4x speedup. Sometimes the cheapest optimization is wasting a little memory.',
@@ -672,7 +672,7 @@ int main() {
         category: 'Copy Elimination',
         short_desc: 'Avoid copying entire containers on every function call',
         explanation:
-            'Passing a std::vector by value copies the ENTIRE container — every element. ' +
+            'Passing a std::vector by value copies the ENTIRE container - every element. ' +
             'For 10M doubles that\'s 80MB copied just to read it. const& passes only an 8-byte pointer ' +
             'with zero copies. One of the most common C++ performance mistakes.',
         severity: 'high',
@@ -744,7 +744,7 @@ int main() {
         category: 'Math Overhead',
         short_desc: 'Replace heavy library call with a single multiply',
         explanation:
-            'std::pow() is a general-purpose function that handles fractional exponents, NaN, inf — ' +
+            'std::pow() is a general-purpose function that handles fractional exponents, NaN, inf - ' +
             'roughly 20–50 CPU cycles per call. A simple x * x is ONE multiply instruction (~3–5 cycles). ' +
             'The compiler CANNOT optimize pow(x, 2) into x * x due to IEEE 754 rounding semantics.',
         severity: 'high',
@@ -908,7 +908,7 @@ int main() {
 for (int i = 0; i < n; i++) {
     total += compute(data[i]);
 }
-// Compiler knows n is fixed — can optimize freely`,
+// Compiler knows n is fixed -- can optimize freely`,
         reference_benchmarks: { before_ns: 95_000_000, after_ns: 92_000_000, speedup: 1.03, data_size: 10_000_000, note: 'Apple M1, clang++ -O2, opaque function body' },
         fix_hint: 'Store .size() in a local const variable before the loop. This also makes the code clearer -- the reader knows the container size won\'t change during iteration.',
         speedup_context: 'Modest gain here, but it signals intent: the compiler now knows the trip count is fixed and can unroll the loop. More importantly, it tells the reader the container is not being resized during iteration.',
@@ -967,7 +967,7 @@ int main() {
         short_desc: 'Avoid heap allocation for read-only string access',
         explanation:
             'Accepting std::string by value triggers a heap allocation + memcpy for every call. ' +
-            'std::string_view is a non-owning {pointer, length} pair — 16 bytes, zero allocation. ' +
+            'std::string_view is a non-owning {pointer, length} pair - 16 bytes, zero allocation. ' +
             'Use it for functions that only READ the string without storing it.',
         severity: 'medium',
         before_label: 'std::string (copy)',
@@ -980,7 +980,7 @@ int main() {
         after_snippet: `bool starts_with(std::string_view s, std::string_view prefix) {
     return s.substr(0, prefix.size()) == prefix;
 }
-// Zero allocations — just pointer + length
+// Zero allocations -- just pointer + length
 // Works with string, string_view, and char*`,
         reference_benchmarks: { before_ns: 85_000_000, after_ns: 12_000_000, speedup: 7.08, data_size: 2_000_000, note: 'Apple M1, clang++ -O2, random strings' },
         fix_hint: 'Replace const std::string& parameters with std::string_view when the function only reads the string. Note: string_view does not own the data -- do not store it beyond the function scope.',
@@ -1056,10 +1056,10 @@ int main() {
 void consume(std::vector<int> data);
 consume(build());  // OK, but:
 std::vector<int> tmp = build();
-consume(tmp);  // COPIES tmp — O(n)!`,
+consume(tmp);  // COPIES tmp -- O(n)!`,
         after_snippet: `std::vector<int> tmp = build();
-consume(std::move(tmp));  // Steals buffer — O(1)
-// tmp is now empty — don't use it after this!
+consume(std::move(tmp));  // Steals buffer -- O(1)
+// tmp is now empty -- don't use it after this!
 // Same for push_back with temporaries:
 results.push_back(std::move(local_vec));`,
         reference_benchmarks: { before_ns: 65_000_000, after_ns: 3_000_000, speedup: 21.67, data_size: 1_000_000, note: 'Apple M1, clang++ -O2, vector<int>' },
@@ -1102,7 +1102,7 @@ int main() {
         auto start=std::chrono::high_resolution_clock::now();
         for(int i=0;i<100;i++){
             std::vector<int> v(N/100); for(int j=0;j<N/100;j++) v[j]=j;
-            container.push_back(std::move(v)); // move — O(1)
+            container.push_back(std::move(v)); // move -- O(1)
         }
         auto end=std::chrono::high_resolution_clock::now();
         after_total+=std::chrono::duration_cast<std::chrono::nanoseconds>(end-start).count();
@@ -1123,7 +1123,7 @@ int main() {
         short_desc: 'Construct in-place instead of copy/move',
         explanation:
             'push_back creates a temporary object, then copies/moves it into the container. ' +
-            'emplace_back constructs the object directly in the container\'s memory — ' +
+            'emplace_back constructs the object directly in the container\'s memory - ' +
             'no temporary, no copy, no move. Biggest wins with expensive constructors.',
         severity: 'low',
         before_label: 'push_back (temp + move)',
@@ -1192,7 +1192,7 @@ int main() {
         short_desc: 'Move computation to compile time',
         explanation:
             'Functions marked constexpr are evaluated at compile time when called with ' +
-            'constant arguments. The result is baked into the binary as a constant — ' +
+            'constant arguments. The result is baked into the binary as a constant - ' +
             'zero runtime cost. Use for lookup tables, math constants, config values.',
         severity: 'low',
         before_label: 'Runtime computation',
@@ -1371,7 +1371,7 @@ for (int x : data) {
 for (int x : data) {
     if (x >= THRESHOLD) sum += x;
 }
-// Branch pattern: NNNN...YYYY — perfect prediction
+// Branch pattern: NNNN...YYYY -- perfect prediction
 // Near-zero mispredictions after warmup`,
         reference_benchmarks: { before_ns: 38_000_000, after_ns: 14_000_000, speedup: 2.71, data_size: 10_000_000, note: 'Apple M1, clang++ -O2, int filter' },
         fix_hint: 'If you are filtering data with an if-statement, consider sorting it first. The sort cost is often paid back by perfect branch prediction. Profile to verify on your data size.',
@@ -1431,7 +1431,7 @@ int main() {
         category: 'RTTI Overhead',
         short_desc: 'Avoid runtime type identification in hot paths',
         explanation:
-            'dynamic_cast invokes RTTI (Run-Time Type Information) — it walks the type hierarchy ' +
+            'dynamic_cast invokes RTTI (Run-Time Type Information) - it walks the type hierarchy ' +
             'tree, comparing type_info objects. This can cost 100–1000 nanoseconds per cast. ' +
             'Use std::variant, type tags, or the visitor pattern for known type sets.',
         severity: 'medium',
@@ -1593,6 +1593,302 @@ int main() {
               << ",\\"iterations\\":" << ITERS << "}" << std::endl;
     return 0;
 }`,
+    },
+
+    // ── mCoding-Inspired Patterns (Newbie C++ Habits) ───────────
+
+    {
+        id: 'using_namespace_std',
+        name: 'using namespace std',
+        category: 'correctness',
+        short_desc: 'Global using-directive pollutes the namespace and causes silent bugs',
+        explanation: 'using namespace std pulls hundreds of names into the global scope. This causes ambiguous overload resolution (e.g., your distance() vs std::distance()), breaks when new names are added to the standard library, and makes code harder to reason about. It is not a performance issue, it is a correctness time bomb.',
+        fix_hint: 'Remove using namespace std and qualify names explicitly: std::cout, std::vector, std::string. For frequently used names, use targeted using-declarations: using std::cout; using std::string;',
+        speedup_context: 'No runtime cost, but this prevents subtle bugs where the wrong overload is silently chosen. One mis-resolved call to distance() instead of std::distance() can corrupt an entire computation.',
+        severity: 'medium',
+        before_label: 'Namespace pollution',
+        after_label: 'Explicit qualification',
+        before_snippet: `using namespace std;
+
+int distance(int a, int b) { return abs(a - b); }
+
+int main() {
+    vector<int> v = {1, 2, 3, 4};
+    // Ambiguous: your distance() or std::distance()?
+    cout << distance(v.begin(), v.end()) << endl;
+}`,
+        after_snippet: `#include <vector>
+#include <iostream>
+#include <cmath>
+
+int distance(int a, int b) { return std::abs(a - b); }
+
+int main() {
+    std::vector<int> v = {1, 2, 3, 4};
+    // Unambiguous: clearly std::distance
+    std::cout << std::distance(v.begin(), v.end()) << '\\n';
+}`,
+        benchmark_code: '',
+        reference_benchmarks: { before_ns: 0, after_ns: 0, speedup: 1.0, data_size: 0, note: 'Correctness pattern - no benchmark' },
+        references: [
+            { title: 'using-directive', url: 'https://en.cppreference.com/w/cpp/language/namespace#Using-directives' },
+        ],
+        further_reading: [
+            { title: 'Why "using namespace std" is bad practice', url: 'https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#sf6-use-using-namespace-directives-for-transition-for-foundation-libraries-such-as-std-or-within-a-local-scope-only' },
+        ],
+    },
+
+    {
+        id: 'c_array_vs_std_array',
+        name: 'C Array vs std::array',
+        category: 'correctness',
+        short_desc: 'C-style arrays decay to pointers and lose size information',
+        explanation: 'C-style arrays (int arr[N]) silently decay to pointers when passed to functions, losing their size. This causes off-by-one errors, buffer overflows, and forces you to pass size as a separate parameter. std::array keeps the size in the type, is bounds-checkable, and works with STL algorithms.',
+        fix_hint: 'Replace int arr[N] with std::array<int, N> arr. For dynamic sizes, use std::vector instead. Never pass raw arrays to functions.',
+        speedup_context: 'Zero runtime overhead. std::array compiles to identical machine code as a C array. You get the same performance with bounds checking, size tracking, and STL compatibility for free.',
+        severity: 'medium',
+        before_label: 'C-style array (size lost on function call)',
+        after_label: 'std::array (size preserved in type)',
+        before_snippet: `void process(int* data, int size) {
+    for (int i = 0; i <= size; i++) {  // off-by-one: nobody catches this
+        data[i] *= 2;
+    }
+}
+
+int main() {
+    int values[100];
+    process(values, 100);  // size passed separately, easy to get wrong
+}`,
+        after_snippet: `#include <array>
+#include <algorithm>
+
+template<std::size_t N>
+void process(std::array<int, N>& data) {
+    for (auto& val : data) {  // no off-by-one possible
+        val *= 2;
+    }
+}
+
+int main() {
+    std::array<int, 100> values{};
+    process(values);  // size is part of the type
+}`,
+        benchmark_code: '',
+        reference_benchmarks: { before_ns: 0, after_ns: 0, speedup: 1.0, data_size: 0, note: 'Correctness pattern - no benchmark' },
+        references: [
+            { title: 'std::array', url: 'https://en.cppreference.com/w/cpp/container/array' },
+        ],
+        further_reading: [
+            { title: 'C++ Core Guidelines: Use std::array for fixed-size sequences', url: 'https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#slcon1-prefer-using-stl-array-or-vector-instead-of-a-c-array' },
+        ],
+    },
+
+    {
+        id: 'raw_new_delete',
+        name: 'Raw new/delete',
+        category: 'correctness',
+        short_desc: 'Manual memory management leaks on exceptions and early returns',
+        explanation: 'Every raw new requires a matching delete, but exceptions, early returns, and branching logic make it nearly impossible to guarantee. A single missed delete is a memory leak. A double delete is undefined behavior. Smart pointers (unique_ptr, shared_ptr) handle deallocation automatically through RAII.',
+        fix_hint: 'Replace new T(...) with std::make_unique<T>(...) for single ownership, or std::make_shared<T>(...) for shared ownership. If you must use new, immediately wrap it in a smart pointer.',
+        speedup_context: 'Not about speed. This is about not shipping memory leaks. In a long-running server, a single leaked 1KB allocation per request at 10K req/s leaks 10MB per second. unique_ptr has zero overhead vs raw pointer.',
+        severity: 'high',
+        before_label: 'Manual memory management',
+        after_label: 'RAII with smart pointers',
+        before_snippet: `Widget* create_widget(int type) {
+    Widget* w = new Widget(type);
+    w->init();        // if this throws, w leaks
+    if (!w->valid()) {
+        return nullptr;  // leaked: forgot delete w
+    }
+    return w;
+}`,
+        after_snippet: `#include <memory>
+
+std::unique_ptr<Widget> create_widget(int type) {
+    auto w = std::make_unique<Widget>(type);
+    w->init();        // if this throws, w is automatically freed
+    if (!w->valid()) {
+        return nullptr;  // unique_ptr destructor frees memory
+    }
+    return w;         // moved out, no copy
+}`,
+        benchmark_code: '',
+        reference_benchmarks: { before_ns: 0, after_ns: 0, speedup: 1.0, data_size: 0, note: 'Correctness pattern - no benchmark' },
+        references: [
+            { title: 'std::unique_ptr', url: 'https://en.cppreference.com/w/cpp/memory/unique_ptr' },
+            { title: 'std::make_unique', url: 'https://en.cppreference.com/w/cpp/memory/unique_ptr/make_unique' },
+        ],
+        further_reading: [
+            { title: 'C++ Core Guidelines: R.11 Avoid new and delete', url: 'https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#r11-avoid-calling-new-and-delete-explicitly' },
+        ],
+    },
+
+    {
+        id: 'missing_virtual_dtor',
+        name: 'Missing Virtual Destructor',
+        category: 'correctness',
+        short_desc: 'Deleting a derived object through a base pointer without virtual destructor is undefined behavior',
+        explanation: 'If a class has virtual methods but a non-virtual destructor, deleting a derived object through a base pointer skips the derived destructor. This leaks resources, corrupts state, and is technically undefined behavior. The compiler will not warn you by default.',
+        fix_hint: 'Add virtual ~ClassName() = default; to any class with at least one virtual method. Or use override on derived destructors to make the intent clear.',
+        speedup_context: 'Not a performance pattern. This is undefined behavior that silently corrupts memory. In production, it manifests as random crashes hours after the actual bug, making it nearly impossible to debug without sanitizers.',
+        severity: 'high',
+        before_label: 'Non-virtual destructor (UB on delete)',
+        after_label: 'Virtual destructor (correct cleanup)',
+        before_snippet: `class Shape {
+public:
+    virtual double area() const = 0;
+    ~Shape() {}  // BUG: non-virtual destructor
+};
+
+class Circle : public Shape {
+    double* data;  // has resources to free
+public:
+    Circle(int n) : data(new double[n]) {}
+    ~Circle() { delete[] data; }  // NEVER CALLED through Shape*
+    double area() const override { return 3.14; }
+};
+
+void process() {
+    Shape* s = new Circle(1000);
+    delete s;  // UB: Circle destructor never runs, data leaks
+}`,
+        after_snippet: `class Shape {
+public:
+    virtual double area() const = 0;
+    virtual ~Shape() = default;  // correct: virtual destructor
+};
+
+class Circle : public Shape {
+    std::unique_ptr<double[]> data;  // RAII handles cleanup
+public:
+    Circle(int n) : data(std::make_unique<double[]>(n)) {}
+    ~Circle() override = default;  // runs correctly through Shape*
+    double area() const override { return 3.14; }
+};`,
+        benchmark_code: '',
+        reference_benchmarks: { before_ns: 0, after_ns: 0, speedup: 1.0, data_size: 0, note: 'Correctness pattern - no benchmark' },
+        references: [
+            { title: 'virtual destructor', url: 'https://en.cppreference.com/w/cpp/language/destructor#Virtual_destructors' },
+        ],
+        further_reading: [
+            { title: 'C++ Core Guidelines: C.35 A base class destructor should be either public and virtual, or protected and non-virtual', url: 'https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#c35-a-base-class-destructor-should-be-either-public-and-virtual-or-protected-and-nonvirtual' },
+        ],
+    },
+
+    {
+        id: 'return_std_move',
+        name: 'return std::move(local)',
+        category: 'performance',
+        short_desc: 'Returning std::move of a local variable prevents copy elision (NRVO)',
+        explanation: 'When you return a local variable, the compiler applies Named Return Value Optimization (NRVO) to construct the object directly in the caller frame with zero copies and zero moves. Adding std::move defeats NRVO, forcing at least one move operation. The compiler is smarter than you here.',
+        fix_hint: 'Just return the local variable by name. The compiler will apply NRVO (zero copies) or implicit move (C++11) automatically. Only use std::move on return when returning a member variable or parameter.',
+        speedup_context: 'NRVO means zero copies AND zero moves: the object is constructed directly where the caller needs it. std::move forces a move constructor call on every return. For types with expensive moves (large flat arrays), this matters.',
+        severity: 'medium',
+        before_label: 'std::move prevents NRVO',
+        after_label: 'Plain return enables NRVO',
+        before_snippet: `std::vector<int> build_data(int n) {
+    std::vector<int> result;
+    result.reserve(n);
+    for (int i = 0; i < n; i++) {
+        result.push_back(i * i);
+    }
+    return std::move(result);  // BAD: prevents NRVO
+}`,
+        after_snippet: `std::vector<int> build_data(int n) {
+    std::vector<int> result;
+    result.reserve(n);
+    for (int i = 0; i < n; i++) {
+        result.push_back(i * i);
+    }
+    return result;  // GOOD: NRVO constructs directly in caller
+}`,
+        benchmark_code: `#include <iostream>
+#include <chrono>
+#include <vector>
+#include <string>
+
+const int N = 100000;
+const int ITERS = 100;
+
+std::vector<std::string> build_with_move(int n) {
+    std::vector<std::string> result;
+    result.reserve(n);
+    for (int i = 0; i < n; i++) {
+        result.push_back(std::string(100, 'x'));
+    }
+    return std::move(result);
+}
+
+std::vector<std::string> build_without_move(int n) {
+    std::vector<std::string> result;
+    result.reserve(n);
+    for (int i = 0; i < n; i++) {
+        result.push_back(std::string(100, 'x'));
+    }
+    return result;
+}
+
+int main() {
+    double before_total = 0;
+    for (int iter = 0; iter < ITERS; iter++) {
+        auto start = std::chrono::high_resolution_clock::now();
+        auto v = build_with_move(N);
+        auto end = std::chrono::high_resolution_clock::now();
+        before_total += std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
+    }
+    double after_total = 0;
+    for (int iter = 0; iter < ITERS; iter++) {
+        auto start = std::chrono::high_resolution_clock::now();
+        auto v = build_without_move(N);
+        auto end = std::chrono::high_resolution_clock::now();
+        after_total += std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
+    }
+    std::cout << "{\\"before_ns\\":" << (before_total / ITERS)
+              << ",\\"after_ns\\":" << (after_total / ITERS)
+              << ",\\"data_size\\":" << N
+              << ",\\"iterations\\":" << ITERS << "}" << std::endl;
+    return 0;
+}`,
+        reference_benchmarks: { before_ns: 12000000, after_ns: 10000000, speedup: 1.2, data_size: 100000, note: 'Apple M1, clang++ -O2, vector of 100-char strings' },
+        references: [
+            { title: 'Copy elision', url: 'https://en.cppreference.com/w/cpp/language/copy_elision' },
+        ],
+        further_reading: [
+            { title: 'C++ Core Guidelines: F.48 Do not return std::move(local)', url: 'https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#f48-dont-return-stdmovelocal' },
+        ],
+    },
+
+    {
+        id: 'missing_make_unique',
+        name: 'Missing make_unique/make_shared',
+        category: 'correctness',
+        short_desc: 'Using new with smart pointer constructors can leak on exception',
+        explanation: 'std::shared_ptr<T>(new T(args)) has two problems: (1) Before C++17, if another argument in the same expression throws, the new T leaks. (2) For shared_ptr, it allocates the control block separately from the object, causing two heap allocations instead of one. make_shared and make_unique fix both issues.',
+        fix_hint: 'Replace std::unique_ptr<T>(new T(args)) with std::make_unique<T>(args). Replace std::shared_ptr<T>(new T(args)) with std::make_shared<T>(args). The only exception is when using a custom deleter.',
+        speedup_context: 'make_shared allocates the object and control block in a single allocation, improving cache locality and cutting heap allocations in half. make_unique is exception-safe where the raw new version is not.',
+        severity: 'medium',
+        before_label: 'Raw new in smart pointer constructor',
+        after_label: 'make_unique / make_shared',
+        before_snippet: `// Two heap allocations, exception-unsafe before C++17
+auto sp = std::shared_ptr<Widget>(new Widget(42));
+
+// Exception-unsafe in multi-argument expressions
+process(std::unique_ptr<Foo>(new Foo()), bar());
+// If bar() throws after new Foo(), Foo leaks`,
+        after_snippet: `// Single heap allocation, always safe
+auto sp = std::make_shared<Widget>(42);
+
+// Exception-safe: make_unique completes before bar() is evaluated
+process(std::make_unique<Foo>(), bar());`,
+        benchmark_code: '',
+        reference_benchmarks: { before_ns: 0, after_ns: 0, speedup: 1.0, data_size: 0, note: 'Correctness pattern - no benchmark' },
+        references: [
+            { title: 'std::make_unique', url: 'https://en.cppreference.com/w/cpp/memory/unique_ptr/make_unique' },
+            { title: 'std::make_shared', url: 'https://en.cppreference.com/w/cpp/memory/shared_ptr/make_shared' },
+        ],
+        further_reading: [
+            { title: 'C++ Core Guidelines: R.22 Use make_shared to make shared_ptrs', url: 'https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#r22-use-make_shared-to-make-shared_ptrs' },
+        ],
     },
 ];
 

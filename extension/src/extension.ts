@@ -38,7 +38,7 @@ export async function activate(context: vscode.ExtensionContext) {
     // Status bar
     statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
     statusBarItem.command = 'latencylens.openDashboard';
-    statusBarItem.tooltip = 'LatencyLens — Click to open dashboard';
+    statusBarItem.tooltip = 'LatencyLens - Click to open dashboard';
     context.subscriptions.push(statusBarItem);
     updateStatusBar(0);
     statusBarItem.show();
@@ -141,10 +141,10 @@ export async function activate(context: vscode.ExtensionContext) {
     // Show activation message with mode info
     const compilerInfo = getCompilerInfo();
     const modeMsg = compilerInfo.compiler
-        ? `⚡ LatencyLens active — analysis: ${analyzer.getMode()}, benchmarks: local (${compilerInfo.compiler})`
-        : `⚡ LatencyLens active — analysis: ${analyzer.getMode()}, benchmarks: reference data`;
+        ? `LatencyLens active - analysis: ${analyzer.getMode()}, benchmarks: local (${compilerInfo.compiler})`
+        : `LatencyLens active - analysis: ${analyzer.getMode()}, benchmarks: reference data`;
     console.log(modeMsg);
-    vscode.window.showInformationMessage('⚡ LatencyLens active — open a C++ file to detect performance anti-patterns');
+    vscode.window.showInformationMessage('LatencyLens active - open a C++ file to detect performance anti-patterns');
 }
 
 // ── Analysis ─────────────────────────────────────────────
@@ -178,7 +178,7 @@ async function analyzeDocument(document: vscode.TextDocument) {
 
                 const diag = new vscode.Diagnostic(
                     range,
-                    `⚡ ${finding.pattern_name}: ${finding.short_desc}`,
+                    `${finding.pattern_name}: ${finding.short_desc}`,
                     severity
                 );
                 diag.source = 'LatencyLens';
@@ -242,8 +242,8 @@ async function runBenchmarkInline(patternId: string) {
         }
 
         // Phase 2: Show result in status bar
-        const sourceIcon = result.source === 'local' ? '🖥️' : '📊';
-        statusBarItem.text = `$(zap) ${result.speedup}× faster ${sourceIcon}`;
+        const sourceLabel = result.source === 'local' ? 'live' : 'ref';
+        statusBarItem.text = `$(zap) ${result.speedup}x faster (${sourceLabel})`;
         statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.prominentBackground');
 
         // Phase 3: Open chart panel
@@ -280,7 +280,7 @@ class BenchmarkResultPanel {
 
         BenchmarkResultPanel.panel = vscode.window.createWebviewPanel(
             'latencylens.benchResult',
-            `⚡ ${result.pattern_name || 'Benchmark'}`,
+            `${result.pattern_name || 'Benchmark'}`,
             { viewColumn: vscode.ViewColumn.Beside, preserveFocus: true },
             { enableScripts: true, retainContextWhenHidden: false }
         );
@@ -309,6 +309,7 @@ class BenchmarkResultPanel {
         const beforeCode = p ? BenchmarkResultPanel.esc(p.before_snippet) : '';
         const afterCode = p ? BenchmarkResultPanel.esc(p.after_snippet) : '';
         const fixHint = p?.fix_hint ? `<section class="section"><h2>How to Fix</h2><p class="fix-text">${BenchmarkResultPanel.esc(p.fix_hint)}</p></section>` : '';
+        const speedupCtx = p?.speedup_context ? `<section class="section"><h2>What This Means</h2><p class="context-text">${BenchmarkResultPanel.esc(p.speedup_context)}</p></section>` : '';
         const refs = p?.references?.length
             ? `<section class="section"><h2>C++ Reference</h2><ul class="link-list">${p.references.map(l => `<li><a href="${l.url}">${BenchmarkResultPanel.esc(l.title)}</a></li>`).join('')}</ul></section>`
             : '';
@@ -384,6 +385,7 @@ pre.code .comment { color: var(--muted); }
 .section { margin-bottom: 16px; }
 .section h2 { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-bottom: 8px; }
 .fix-text { font-size: 12.5px; line-height: 1.6; padding: 10px 12px; background: var(--card); border: 1px solid var(--border); border-radius: 6px; border-left: 3px solid var(--green); }
+.context-text { font-size: 12.5px; line-height: 1.6; padding: 10px 12px; background: var(--card); border: 1px solid var(--border); border-radius: 6px; border-left: 3px solid var(--gold); color: var(--text); opacity: 0.9; }
 .link-list { list-style: none; }
 .link-list li { margin-bottom: 4px; }
 .link-list a { color: var(--link); text-decoration: none; font-size: 12px; }
@@ -432,11 +434,12 @@ ${(beforeCode || afterCode) ? `
     </div>
 </div>` : ''}
 
+${speedupCtx}
 ${fixHint}
 ${refs}
 ${reading}
 
-<div class="footer">LatencyLens &middot; Speedup (up to) &mdash; actual results depend on data, compiler, and hardware</div>
+<div class="footer">LatencyLens - Speedup (up to) - actual results depend on data, compiler, and hardware</div>
 </body></html>`;
     }
 }

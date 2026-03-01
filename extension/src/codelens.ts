@@ -40,7 +40,7 @@ export class LensProvider implements vscode.CodeLensProvider {
 
                 // Benchmark lens
                 lenses.push(new vscode.CodeLens(range, {
-                    title: `⚡ Benchmark: ${finding.pattern_name}`,
+                    title: `Benchmark: ${finding.pattern_name}`,
                     command: 'latencylens.benchmarkPattern',
                     arguments: [finding.pattern_id],
                     tooltip: `Run real C++ benchmark for ${finding.pattern_name}\n${finding.short_desc}`,
