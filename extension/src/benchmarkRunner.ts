@@ -88,11 +88,14 @@ export function getCompilerInfo(): { compiler: string | null; platform: string; 
     };
 }
 
+export type BenchmarkPhase = 'compiling' | 'running' | 'done';
+export type ProgressCallback = (phase: BenchmarkPhase) => void;
+
 /**
  * Run a benchmark for a specific pattern.
  * Tries local compilation first, falls back to reference data.
  */
-export async function runBenchmark(patternId: string, dataSize?: number): Promise<BenchmarkResult> {
+export async function runBenchmark(patternId: string, dataSize?: number, onProgress?: ProgressCallback): Promise<BenchmarkResult> {
     const pattern = getPatternById(patternId);
     if (!pattern) {
         return { before_ns: 0, after_ns: 0, speedup: 0, data_size: 0, error: `Pattern '${patternId}' not found`, source: 'reference' };
@@ -101,19 +104,32 @@ export async function runBenchmark(patternId: string, dataSize?: number): Promis
     const compiler = findCompiler();
     if (compiler) {
         try {
-            return await runLocalBenchmark(pattern, compiler, dataSize);
+            return await runLocalBenchmark(pattern, compiler, dataSize, onProgress);
         } catch (e) {
             console.error('LatencyLens: local benchmark failed, using reference:', e);
         }
     }
 
+    onProgress?.('done');
     return getReferenceBenchmark(pattern, dataSize);
+}
+
+/**
+ * Async exec wrapper.
+ */
+function execAsync(cmd: string, options: cp.ExecOptions): Promise<string> {
+    return new Promise((resolve, reject) => {
+        cp.exec(cmd, { ...options, encoding: 'utf8' }, (error, stdout, stderr) => {
+            if (error) { reject(new Error(stderr?.toString() || error.message)); }
+            else { resolve(stdout?.toString() || ''); }
+        });
+    });
 }
 
 /**
  * Compile and run a real C++ benchmark locally.
  */
-async function runLocalBenchmark(pattern: Pattern, compiler: string, dataSize?: number): Promise<BenchmarkResult> {
+async function runLocalBenchmark(pattern: Pattern, compiler: string, dataSize?: number, onProgress?: ProgressCallback): Promise<BenchmarkResult> {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'latencylens_'));
     const srcPath = path.join(tmpDir, 'bench.cpp');
     const binPath = path.join(tmpDir, 'bench');
@@ -128,20 +144,16 @@ async function runLocalBenchmark(pattern: Pattern, compiler: string, dataSize?: 
         }
         cmd.push(srcPath, '-o', binPath);
 
-        // Compile
-        const compileResult = cp.execSync(cmd.join(' '), {
-            timeout: 30000,
-            stdio: ['pipe', 'pipe', 'pipe'],
-        });
+        // Compile (async)
+        onProgress?.('compiling');
+        await execAsync(cmd.join(' '), { timeout: 30000 });
 
-        // Execute
-        const runResult = cp.execSync(binPath, {
-            timeout: 60000,
-            stdio: ['pipe', 'pipe', 'pipe'],
-        });
+        // Execute (async)
+        onProgress?.('running');
+        const output = await execAsync(binPath, { timeout: 60000 });
 
-        const output = runResult.toString().trim();
-        const data = JSON.parse(output);
+        const data = JSON.parse(output.trim());
+        onProgress?.('done');
 
         return {
             before_ns: data.before_ns,

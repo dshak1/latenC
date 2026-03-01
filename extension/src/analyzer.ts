@@ -6,7 +6,7 @@
  */
 
 import { analyzeCode as astAnalyze, ASTFinding, initTreeSitter, isTreeSitterReady } from './astAnalyzer';
-import { runBenchmark, runScalingBenchmark, BenchmarkResult } from './benchmarkRunner';
+import { runBenchmark, runScalingBenchmark, BenchmarkResult, ProgressCallback } from './benchmarkRunner';
 
 export interface Match {
     line: number;
@@ -75,8 +75,8 @@ export class Analyzer {
      * Run a benchmark for a specific pattern.
      * Uses local compiler if available, reference data otherwise.
      */
-    async benchmark(patternId: string, dataSize?: number): Promise<BenchmarkResult> {
-        return runBenchmark(patternId, dataSize);
+    async benchmark(patternId: string, dataSize?: number, onProgress?: ProgressCallback): Promise<BenchmarkResult> {
+        return runBenchmark(patternId, dataSize, onProgress);
     }
 
     /**
