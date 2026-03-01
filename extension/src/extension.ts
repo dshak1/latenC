@@ -14,7 +14,6 @@
 
 import * as vscode from 'vscode';
 import * as fs from 'fs';
-import * as os from 'os';
 import * as path from 'path';
 import { execFile } from 'child_process';
 import { Analyzer, Finding } from './analyzer';
@@ -205,11 +204,6 @@ async function analyzeDocument(document: vscode.TextDocument) {
         diagnosticCollection.set(document.uri, diagnostics);
         updateStatusBar(findings.length);
 
-        // Play error sound if high-severity patterns found
-        if (diagnostics.some(d => d.severity === vscode.DiagnosticSeverity.Warning)) {
-            playErrorSound();
-        }
-
         // Trigger CodeLens refresh
         lensChangeEmitter.fire();
 
@@ -243,7 +237,7 @@ async function runBenchmarkInline(patternId: string) {
         });
 
         if (result.error) {
-            playErrorSound();
+            playFahhSound();
             statusBarItem.text = '$(error) Benchmark failed';
             statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
             vscode.window.showErrorMessage(`Benchmark failed: ${result.error}`);
@@ -256,14 +250,15 @@ async function runBenchmarkInline(patternId: string) {
         statusBarItem.text = `$(zap) ${result.speedup}x faster (${sourceLabel})`;
         statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.prominentBackground');
 
-        // Phase 3: Open chart panel
+        // Phase 3: Play sound + open chart panel
+        playFahhSound();
         BenchmarkResultPanel.show(result);
 
         // Reset status bar after 8 seconds
         setTimeout(() => { statusBarItem.text = originalText; statusBarItem.backgroundColor = originalBg; }, 8000);
 
     } catch (e: any) {
-        playErrorSound();
+        playFahhSound();
         statusBarItem.text = '$(error) Benchmark failed';
         statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
         vscode.window.showErrorMessage(`Benchmark error: ${e.message}`);
@@ -479,68 +474,39 @@ function formatNs(ns: number): string {
     return Math.round(ns) + 'ns';
 }
 
-// ── Error Sound ──────────────────────────────────────────
+// ── Fahh Sound ───────────────────────────────────────────
 
-let errorSoundPath: string | undefined;
+let fahhSoundPath: string | undefined;
 
 /**
- * Generate a short descending "fahhh" tone as a WAV file and play it.
- * Sounds like a quick failure buzzer: 440Hz dropping to 180Hz over 0.35s.
+ * Play the bundled "fahh" sound effect.
+ * Triggered when the benchmark comparison panel opens.
  */
-function playErrorSound(): void {
+function playFahhSound(): void {
     try {
-        if (!errorSoundPath || !fs.existsSync(errorSoundPath)) {
-            errorSoundPath = path.join(os.tmpdir(), 'latencylens-error.wav');
-            const sampleRate = 22050;
-            const duration = 0.35;
-            const numSamples = Math.floor(sampleRate * duration);
-            const buffer = Buffer.alloc(44 + numSamples * 2);
-
-            // WAV header
-            buffer.write('RIFF', 0);
-            buffer.writeUInt32LE(36 + numSamples * 2, 4);
-            buffer.write('WAVE', 8);
-            buffer.write('fmt ', 12);
-            buffer.writeUInt32LE(16, 16);      // chunk size
-            buffer.writeUInt16LE(1, 20);       // PCM
-            buffer.writeUInt16LE(1, 22);       // mono
-            buffer.writeUInt32LE(sampleRate, 24);
-            buffer.writeUInt32LE(sampleRate * 2, 28); // byte rate
-            buffer.writeUInt16LE(2, 32);       // block align
-            buffer.writeUInt16LE(16, 34);      // bits per sample
-            buffer.write('data', 36);
-            buffer.writeUInt32LE(numSamples * 2, 40);
-
-            // Descending tone: 440Hz -> 180Hz with fade out
-            for (let i = 0; i < numSamples; i++) {
-                const t = i / sampleRate;
-                const progress = i / numSamples;
-                const freq = 440 - (440 - 180) * progress;
-                const envelope = Math.pow(1 - progress, 1.5);
-                const sample = Math.sin(2 * Math.PI * freq * t) * envelope * 0.6;
-                buffer.writeInt16LE(Math.floor(sample * 32767), 44 + i * 2);
+        if (!fahhSoundPath) {
+            // Resolve from bundled extension media
+            const ext = vscode.extensions.getExtension('dshak.latencylens');
+            if (ext) {
+                fahhSoundPath = path.join(ext.extensionPath, 'media', 'fahh.mp3');
+            } else {
+                // Fallback: resolve relative to compiled output
+                fahhSoundPath = path.join(__dirname, '..', 'media', 'fahh.mp3');
             }
-
-            fs.writeFileSync(errorSoundPath, buffer);
         }
+        if (!fs.existsSync(fahhSoundPath)) { return; }
 
-        // Play with OS audio command (fire and forget)
         const platform = process.platform;
         if (platform === 'darwin') {
-            execFile('afplay', [errorSoundPath], () => {});
+            execFile('afplay', [fahhSoundPath], () => {});
         } else if (platform === 'linux') {
-            execFile('aplay', ['-q', errorSoundPath], () => {});
+            execFile('mpg123', ['-q', fahhSoundPath], () => {});
         } else if (platform === 'win32') {
-            execFile('powershell', ['-c', `(New-Object Media.SoundPlayer '${errorSoundPath}').PlaySync()`], () => {});
+            execFile('powershell', ['-c', `Add-Type -AssemblyName PresentationCore; $p=New-Object System.Windows.Media.MediaPlayer; $p.Open([Uri]'${fahhSoundPath}'); $p.Play(); Start-Sleep -s 3`], () => {});
         }
     } catch {
         // Audio is non-critical, fail silently
     }
 }
 
-export function deactivate() {
-    // Clean up temp sound file
-    if (errorSoundPath && fs.existsSync(errorSoundPath)) {
-        try { fs.unlinkSync(errorSoundPath); } catch {}
-    }
-}
+export function deactivate() {}
