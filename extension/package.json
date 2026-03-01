@@ -1,0 +1,95 @@
+{
+  "name": "latencylens",
+  "displayName": "LatencyLens — C++ Performance Observatory",
+  "description": "Detect C++ performance anti-patterns with AST analysis, see explanations, and run real compiled benchmarks — all inside VS Code. Zero external dependencies.",
+  "version": "0.2.0",
+  "publisher": "latencylens",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Linters",
+    "Programming Languages",
+    "Visualization"
+  ],
+  "keywords": [
+    "c++",
+    "cpp",
+    "performance",
+    "benchmark",
+    "optimization",
+    "latency",
+    "profiling",
+    "tree-sitter",
+    "anti-pattern"
+  ],
+  "activationEvents": [
+    "onLanguage:cpp",
+    "onLanguage:c"
+  ],
+  "main": "./out/extension.js",
+  "icon": "icon.png",
+  "contributes": {
+    "commands": [
+      {
+        "command": "latencylens.openDashboard",
+        "title": "LatencyLens: Open Dashboard",
+        "icon": "$(zap)"
+      },
+      {
+        "command": "latencylens.analyzeFile",
+        "title": "LatencyLens: Analyze Current File"
+      },
+      {
+        "command": "latencylens.benchmarkPattern",
+        "title": "LatencyLens: Benchmark Pattern"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "when": "resourceLangId == cpp || resourceLangId == c",
+          "command": "latencylens.openDashboard",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "LatencyLens",
+      "properties": {
+        "latencylens.analyzeOnSave": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically analyze C++ files on save"
+        },
+        "latencylens.showCodeLens": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show benchmark CodeLens above detected patterns"
+        },
+        "latencylens.analysisMode": {
+          "type": "string",
+          "default": "auto",
+          "enum": ["auto", "tree-sitter", "regex"],
+          "description": "Analysis engine: 'auto' uses tree-sitter if WASM is available, falls back to regex"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "setup-wasm": "node scripts/setup-wasm.js",
+    "package": "npm run setup-wasm && npx @vscode/vsce package --no-dependencies"
+  },
+  "dependencies": {
+    "web-tree-sitter": "^0.22.6"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.3.0",
+    "@vscode/vsce": "^3.0.0"
+  }
+}
