@@ -104,12 +104,12 @@ latencylens/
 
 | Scenario | Regex | Tree-sitter AST |
 |----------|-------|-----------------|
-| `std::map` inside a comment | ❌ False positive | ✅ Skipped |
-| `push_back` with `reserve()` already called | ❌ False positive | ✅ Checks preceding calls |
-| Pass by value on `int` (cheap type) | ❌ Flags it | ✅ Only flags containers/strings |
-| `std::pow(x, 2)` — small exponent | ❌ Flags all pow | ✅ Checks argument is small integer |
-| `std::atomic` in separate structs | ❌ Flags both | ✅ Checks same struct context |
-| `.size()` in loop with const container | ✅ Works | ✅ Works + verifies loop structure |
+| `std::map` inside a comment |  False positive |  Skipped |
+| `push_back` with `reserve()` already called |  False positive |  Checks preceding calls |
+| Pass by value on `int` (cheap type) |  Flags it |  Only flags containers/strings |
+| `std::pow(x, 2)` — small exponent |  Flags all pow | Checks argument is small integer |
+| `std::atomic` in separate structs |  Flags both | Checks same struct context |
+| `.size()` in loop with const container | Works | Works + verifies loop structure |
 
 ---
 
