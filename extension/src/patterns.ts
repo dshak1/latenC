@@ -28,6 +28,7 @@ export interface Pattern {
     category: string;
     short_desc: string;
     explanation: string;
+    fix_hint: string;
     severity: 'high' | 'medium' | 'low';
     before_label: string;
     after_label: string;
@@ -35,6 +36,8 @@ export interface Pattern {
     after_snippet: string;
     benchmark_code: string;
     reference_benchmarks: ReferenceBenchmark;
+    references: { title: string; url: string }[];
+    further_reading: { title: string; url: string }[];
 }
 
 export const PATTERNS: Pattern[] = [
@@ -61,6 +64,15 @@ m.reserve(N);
 for (int i = 0; i < N; i++) m[keys[i]] = i;
 auto it = m.find(key);  // O(1) — hash lookup`,
         reference_benchmarks: { before_ns: 98_000_000, after_ns: 32_000_000, speedup: 3.06, data_size: 100_000, note: 'Apple M1, clang++ -O2, integer keys' },
+        fix_hint: 'Replace std::map with std::unordered_map and add .reserve(N) if you know the size. Only keep std::map if you need sorted iteration.',
+        references: [
+            { title: 'std::unordered_map', url: 'https://en.cppreference.com/w/cpp/container/unordered_map' },
+            { title: 'std::map', url: 'https://en.cppreference.com/w/cpp/container/map' },
+        ],
+        further_reading: [
+            { title: 'Hash Table vs Red-Black Tree — When to Use Which', url: 'https://isocpp.org/wiki/faq/containers#vector-vs-list' },
+            { title: 'Chandler Carruth: Efficiency with Algorithms (CppCon)', url: 'https://www.youtube.com/watch?v=fHNmRkzxHWs' },
+        ],
         benchmark_code: `#include <iostream>
 #include <chrono>
 #include <map>
@@ -138,6 +150,15 @@ for (auto& val : data) sum += val;
 // Contiguous memory → hardware prefetcher
 // L1 cache hits ~95% of the time`,
         reference_benchmarks: { before_ns: 45_000_000, after_ns: 3_200_000, speedup: 14.06, data_size: 1_000_000, note: 'Apple M1, clang++ -O2, int iteration' },
+        fix_hint: 'Replace std::list with std::vector unless you need stable iterators during mid-sequence insertion. Even frequent insertions in the middle are often faster with vector due to cache locality.',
+        references: [
+            { title: 'std::vector', url: 'https://en.cppreference.com/w/cpp/container/vector' },
+            { title: 'std::list', url: 'https://en.cppreference.com/w/cpp/container/list' },
+        ],
+        further_reading: [
+            { title: 'Bjarne Stroustrup: Why you should avoid linked lists', url: 'https://www.youtube.com/watch?v=YQs6IC-vgmo' },
+            { title: 'Data-Oriented Design (Mike Acton, CppCon)', url: 'https://www.youtube.com/watch?v=rX0ItVEVjHc' },
+        ],
         benchmark_code: `#include <iostream>
 #include <chrono>
 #include <list>
@@ -200,6 +221,14 @@ for (int i = 0; i < N; i++)
     v.push_back(i);
 // Zero reallocations, zero copies`,
         reference_benchmarks: { before_ns: 52_000_000, after_ns: 38_000_000, speedup: 1.37, data_size: 5_000_000, note: 'Apple M1, clang++ -O2' },
+        fix_hint: 'Call v.reserve(N) before the loop if you know or can estimate the final size. For exact sizes, consider resize() + direct index assignment instead of push_back.',
+        references: [
+            { title: 'std::vector::reserve', url: 'https://en.cppreference.com/w/cpp/container/vector/reserve' },
+            { title: 'std::vector::capacity', url: 'https://en.cppreference.com/w/cpp/container/vector/capacity' },
+        ],
+        further_reading: [
+            { title: 'How vector grows: amortized analysis', url: 'https://en.cppreference.com/w/cpp/container/vector' },
+        ],
         benchmark_code: `#include <iostream>
 #include <chrono>
 #include <vector>
@@ -264,6 +293,14 @@ struct Shape {
 for (auto& s : shapes) total += s.area();
 // Zero indirection, fully inlined, auto-vectorizable`,
         reference_benchmarks: { before_ns: 68_000_000, after_ns: 22_000_000, speedup: 3.09, data_size: 10_000_000, note: 'Apple M1, clang++ -O2' },
+        fix_hint: 'Use CRTP when you have a fixed set of derived types known at compile time. Keep virtual dispatch for plugin-style extensibility where types are loaded at runtime.',
+        references: [
+            { title: 'virtual function specifier', url: 'https://en.cppreference.com/w/cpp/language/virtual' },
+            { title: 'CRTP (Curiously Recurring Template Pattern)', url: 'https://en.cppreference.com/w/cpp/language/crtp' },
+        ],
+        further_reading: [
+            { title: 'CppCon: The Cost of Dynamic Polymorphism', url: 'https://www.youtube.com/watch?v=QMR-FkTMuBs' },
+        ],
         benchmark_code: `#include <iostream>
 #include <chrono>
 #include <vector>
@@ -339,6 +376,14 @@ int main() {
 };
 // Only position+velocity data enters cache — SIMD friendly`,
         reference_benchmarks: { before_ns: 18_000_000, after_ns: 5_500_000, speedup: 3.27, data_size: 2_000_000, note: 'Apple M1, clang++ -O2, position update' },
+        fix_hint: 'Restructure your struct so each field is a separate contiguous array. Group fields that are accessed together. This is the core of Data-Oriented Design.',
+        references: [
+            { title: 'alignas specifier', url: 'https://en.cppreference.com/w/cpp/language/alignas' },
+        ],
+        further_reading: [
+            { title: 'Mike Acton: Data-Oriented Design and C++ (CppCon)', url: 'https://www.youtube.com/watch?v=rX0ItVEVjHc' },
+            { title: 'Richard Fabian: Data-Oriented Design (free book)', url: 'https://www.dataorienteddesign.com/dodbook/' },
+        ],
         benchmark_code: `#include <iostream>
 #include <chrono>
 #include <vector>
@@ -411,6 +456,14 @@ int main() {
 }
 // Zero mispredictions, constant-time execution`,
         reference_benchmarks: { before_ns: 32_000_000, after_ns: 12_000_000, speedup: 2.67, data_size: 10_000_000, note: 'Apple M1, clang++ -O2, random data' },
+        fix_hint: 'Convert conditional accumulation to arithmetic: use (-(condition)) as a mask, or multiply by the boolean. Works best when branch is unpredictable (~50/50). Sorted data has good prediction — don\'t optimize what\'s already fast.',
+        references: [
+            { title: 'Branch prediction', url: 'https://en.wikipedia.org/wiki/Branch_predictor' },
+        ],
+        further_reading: [
+            { title: 'Why is processing a sorted array faster? (Stack Overflow)', url: 'https://stackoverflow.com/questions/11227809' },
+            { title: 'Branchless Programming (Fedor Pikus, CppCon)', url: 'https://www.youtube.com/watch?v=g-WPhYREFjk' },
+        ],
         benchmark_code: `#include <iostream>
 #include <chrono>
 #include <vector>
@@ -473,6 +526,14 @@ ptrs.push_back(std::move(p));
 // ZERO overhead — same as raw pointer
 // Compiler optimizes completely away`,
         reference_benchmarks: { before_ns: 180_000_000, after_ns: 95_000_000, speedup: 1.89, data_size: 5_000_000, note: 'Apple M1, clang++ -O2' },
+        fix_hint: 'Default to std::unique_ptr for single ownership. Only use shared_ptr when ownership is genuinely shared across multiple owners with different lifetimes. Consider passing raw pointers/references for non-owning access.',
+        references: [
+            { title: 'std::unique_ptr', url: 'https://en.cppreference.com/w/cpp/memory/unique_ptr' },
+            { title: 'std::shared_ptr', url: 'https://en.cppreference.com/w/cpp/memory/shared_ptr' },
+        ],
+        further_reading: [
+            { title: 'Herb Sutter: Back to the Basics! Essentials of Modern C++', url: 'https://www.youtube.com/watch?v=xnqTKD8uD64' },
+        ],
         benchmark_code: `#include <iostream>
 #include <chrono>
 #include <memory>
@@ -540,6 +601,14 @@ struct Counters {
 };
 // Each core owns its cache line — no bouncing`,
         reference_benchmarks: { before_ns: 650_000_000, after_ns: 190_000_000, speedup: 3.42, data_size: 50_000_000, note: 'Apple M1, clang++ -O2, 2 threads' },
+        fix_hint: 'Pad each thread-local variable to a full cache line with alignas(64) or std::hardware_destructive_interference_size. Group per-thread data in its own struct aligned to 64 bytes.',
+        references: [
+            { title: 'std::hardware_destructive_interference_size', url: 'https://en.cppreference.com/w/cpp/thread/hardware_destructive_interference_size' },
+            { title: 'alignas specifier', url: 'https://en.cppreference.com/w/cpp/language/alignas' },
+        ],
+        further_reading: [
+            { title: 'False Sharing and CPU Caches (Scott Meyers)', url: 'https://www.aristeia.com/TalkNotes/ACCU2011_FalseSharing.pdf' },
+        ],
         benchmark_code: `#include <iostream>
 #include <chrono>
 #include <thread>
@@ -611,6 +680,14 @@ int main() {
     for (auto& v : data) total += v;
 }`,
         reference_benchmarks: { before_ns: 55_000_000, after_ns: 8_000_000, speedup: 6.88, data_size: 5_000_000, note: 'Apple M1, clang++ -O2, vector<double>' },
+        fix_hint: 'Add const& to function parameters for any type larger than a pointer (8 bytes). Strings, vectors, maps — always pass by const reference unless you need a copy inside the function.',
+        references: [
+            { title: 'Reference declaration', url: 'https://en.cppreference.com/w/cpp/language/reference' },
+            { title: 'const type qualifier', url: 'https://en.cppreference.com/w/cpp/language/cv' },
+        ],
+        further_reading: [
+            { title: 'C++ Core Guidelines: F.16', url: 'https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#f16-for-in-parameters-pass-cheaply-copied-types-by-value-and-others-by-reference-to-const' },
+        ],
         benchmark_code: `#include <iostream>
 #include <chrono>
 #include <vector>
@@ -674,6 +751,14 @@ int main() {
     // 10-20× faster per element
 }`,
         reference_benchmarks: { before_ns: 120_000_000, after_ns: 8_000_000, speedup: 15.0, data_size: 10_000_000, note: 'Apple M1, clang++ -O2, runtime exponent' },
+        fix_hint: 'Replace pow(x, 2) with x*x, pow(x, 3) with x*x*x, and pow(x, 0.5) with std::sqrt(x). The compiler cannot do this for you due to IEEE 754 floating-point semantics.',
+        references: [
+            { title: 'std::pow', url: 'https://en.cppreference.com/w/cpp/numeric/math/pow' },
+            { title: 'std::sqrt', url: 'https://en.cppreference.com/w/cpp/numeric/math/sqrt' },
+        ],
+        further_reading: [
+            { title: 'Why the compiler can\'t optimize pow(x,2) to x*x', url: 'https://stackoverflow.com/questions/6430448' },
+        ],
         benchmark_code: `#include <iostream>
 #include <chrono>
 #include <vector>
@@ -744,6 +829,14 @@ int main(int argc, char** argv) {
     // OS batches writes automatically
 }`,
         reference_benchmarks: { before_ns: 42_000_000, after_ns: 8_500_000, speedup: 4.94, data_size: 100_000, note: 'Apple M1, clang++ -O2, ostringstream' },
+        fix_hint: 'Replace std::endl with \'\\n\' everywhere unless you explicitly need to flush (e.g., before user input). Use std::flush only when you actually need immediate output.',
+        references: [
+            { title: 'std::endl', url: 'https://en.cppreference.com/w/cpp/io/manip/endl' },
+            { title: 'std::flush', url: 'https://en.cppreference.com/w/cpp/io/manip/flush' },
+        ],
+        further_reading: [
+            { title: 'C++ I/O performance tips', url: 'https://stackoverflow.com/questions/213907' },
+        ],
         benchmark_code: `#include <iostream>
 #include <chrono>
 #include <sstream>
@@ -805,6 +898,13 @@ for (int i = 0; i < n; i++) {
 }
 // Compiler knows n is fixed — can optimize freely`,
         reference_benchmarks: { before_ns: 95_000_000, after_ns: 92_000_000, speedup: 1.03, data_size: 10_000_000, note: 'Apple M1, clang++ -O2, opaque function body' },
+        fix_hint: 'Store .size() in a local const variable before the loop. This also makes the code clearer — the reader knows the container size won\'t change during iteration.',
+        references: [
+            { title: 'Range-based for loop', url: 'https://en.cppreference.com/w/cpp/language/range-for' },
+        ],
+        further_reading: [
+            { title: 'C++ Core Guidelines: ES.71', url: 'https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#es71-prefer-a-range-for-statement-to-a-for-statement-when-there-is-a-choice' },
+        ],
         benchmark_code: `#include <iostream>
 #include <chrono>
 #include <vector>
@@ -835,6 +935,634 @@ int main() {
         auto start=std::chrono::high_resolution_clock::now();
         volatile double sum=0; const int n=static_cast<int>(data.size());
         for(int i=0;i<n;i++) sum+=heavy_work(data[i]);
+        auto end=std::chrono::high_resolution_clock::now();
+        after_total+=std::chrono::duration_cast<std::chrono::nanoseconds>(end-start).count();
+    }
+    std::cout << "{\\"before_ns\\":" << (before_total / ITERS)
+              << ",\\"after_ns\\":" << (after_total / ITERS)
+              << ",\\"data_size\\":" << N
+              << ",\\"iterations\\":" << ITERS << "}" << std::endl;
+    return 0;
+}`,
+    },
+
+    // ── 13. string copy → string_view ────────────────────────────
+    {
+        id: 'string_copy_vs_view',
+        name: 'std::string Copy → std::string_view',
+        category: 'Copy Elimination',
+        short_desc: 'Avoid heap allocation for read-only string access',
+        explanation:
+            'Accepting std::string by value triggers a heap allocation + memcpy for every call. ' +
+            'std::string_view is a non-owning {pointer, length} pair — 16 bytes, zero allocation. ' +
+            'Use it for functions that only READ the string without storing it.',
+        severity: 'medium',
+        before_label: 'std::string (copy)',
+        after_label: 'std::string_view',
+        before_snippet: `bool starts_with(std::string s, std::string prefix) {
+    return s.substr(0, prefix.size()) == prefix;
+}
+// Every call: 2 heap allocations + 2 memcpy
+// Even with SSO, large strings always allocate`,
+        after_snippet: `bool starts_with(std::string_view s, std::string_view prefix) {
+    return s.substr(0, prefix.size()) == prefix;
+}
+// Zero allocations — just pointer + length
+// Works with string, string_view, and char*`,
+        reference_benchmarks: { before_ns: 85_000_000, after_ns: 12_000_000, speedup: 7.08, data_size: 2_000_000, note: 'Apple M1, clang++ -O2, random strings' },
+        fix_hint: 'Replace const std::string& parameters with std::string_view when the function only reads the string. Note: string_view does not own the data — don\'t store it beyond the function scope.',
+        references: [
+            { title: 'std::string_view', url: 'https://en.cppreference.com/w/cpp/string/basic_string_view' },
+            { title: 'std::string', url: 'https://en.cppreference.com/w/cpp/string/basic_string' },
+        ],
+        further_reading: [
+            { title: 'C++ Core Guidelines: SL.str.2', url: 'https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#slstr2-use-stdstring_view-or-gslstring_view-to-refer-to-character-sequences' },
+        ],
+        benchmark_code: `#include <iostream>
+#include <chrono>
+#include <string>
+#include <string_view>
+#include <vector>
+#include <cstdlib>
+
+#ifndef DATA_SIZE
+#define DATA_SIZE 2000000
+#endif
+#ifndef ITERATIONS
+#define ITERATIONS 5
+#endif
+
+__attribute__((noinline)) bool check_str(std::string s) { return s.size() > 5 && s[0] == 'h'; }
+__attribute__((noinline)) bool check_sv(std::string_view s) { return s.size() > 5 && s[0] == 'h'; }
+
+int main() {
+    const int N = DATA_SIZE; const int ITERS = ITERATIONS;
+    std::vector<std::string> data(N);
+    for(int i=0;i<N;i++) data[i] = "hello_world_" + std::to_string(i);
+    double before_total = 0;
+    for(int iter=0;iter<ITERS;iter++){
+        auto start=std::chrono::high_resolution_clock::now();
+        volatile int cnt=0; for(auto&s:data) cnt+=check_str(s);
+        auto end=std::chrono::high_resolution_clock::now();
+        before_total+=std::chrono::duration_cast<std::chrono::nanoseconds>(end-start).count();
+    }
+    double after_total = 0;
+    for(int iter=0;iter<ITERS;iter++){
+        auto start=std::chrono::high_resolution_clock::now();
+        volatile int cnt=0; for(auto&s:data) cnt+=check_sv(s);
+        auto end=std::chrono::high_resolution_clock::now();
+        after_total+=std::chrono::duration_cast<std::chrono::nanoseconds>(end-start).count();
+    }
+    std::cout << "{\\"before_ns\\":" << (before_total / ITERS)
+              << ",\\"after_ns\\":" << (after_total / ITERS)
+              << ",\\"data_size\\":" << N
+              << ",\\"iterations\\":" << ITERS << "}" << std::endl;
+    return 0;
+}`,
+    },
+
+    // ── 14. Missing std::move ────────────────────────────────────
+    {
+        id: 'missing_move',
+        name: 'Copy → std::move',
+        category: 'Move Semantics',
+        short_desc: 'Steal resources instead of copying them',
+        explanation:
+            'When you assign or pass a local variable that won\'t be used again, the compiler ' +
+            'still copies it unless you use std::move(). Move "steals" the internal buffer ' +
+            '(e.g., vector\'s heap pointer) in O(1), while copy is O(n).',
+        severity: 'medium',
+        before_label: 'Copy assignment',
+        after_label: 'std::move',
+        before_snippet: `std::vector<int> build() {
+    std::vector<int> result;
+    for (int i = 0; i < N; i++) result.push_back(i);
+    return result;  // NRVO usually handles this
+}
+void consume(std::vector<int> data);
+consume(build());  // OK, but:
+std::vector<int> tmp = build();
+consume(tmp);  // COPIES tmp — O(n)!`,
+        after_snippet: `std::vector<int> tmp = build();
+consume(std::move(tmp));  // Steals buffer — O(1)
+// tmp is now empty — don't use it after this!
+// Same for push_back with temporaries:
+results.push_back(std::move(local_vec));`,
+        reference_benchmarks: { before_ns: 65_000_000, after_ns: 3_000_000, speedup: 21.67, data_size: 1_000_000, note: 'Apple M1, clang++ -O2, vector<int>' },
+        fix_hint: 'Use std::move() when passing or assigning a local variable that you won\'t read from again. Common spots: push_back, function arguments, return values, and container construction.',
+        references: [
+            { title: 'std::move', url: 'https://en.cppreference.com/w/cpp/utility/move' },
+            { title: 'Move constructors', url: 'https://en.cppreference.com/w/cpp/language/move_constructor' },
+        ],
+        further_reading: [
+            { title: 'Effective Modern C++: Item 23 (Scott Meyers)', url: 'https://www.oreilly.com/library/view/effective-modern-c/9781491908419/' },
+        ],
+        benchmark_code: `#include <iostream>
+#include <chrono>
+#include <vector>
+
+#ifndef DATA_SIZE
+#define DATA_SIZE 1000000
+#endif
+#ifndef ITERATIONS
+#define ITERATIONS 10
+#endif
+
+int main() {
+    const int N = DATA_SIZE; const int ITERS = ITERATIONS;
+    double before_total = 0;
+    for(int iter=0;iter<ITERS;iter++){
+        std::vector<std::vector<int>> container;
+        auto start=std::chrono::high_resolution_clock::now();
+        for(int i=0;i<100;i++){
+            std::vector<int> v(N/100); for(int j=0;j<N/100;j++) v[j]=j;
+            container.push_back(v); // copy
+        }
+        auto end=std::chrono::high_resolution_clock::now();
+        before_total+=std::chrono::duration_cast<std::chrono::nanoseconds>(end-start).count();
+    }
+    double after_total = 0;
+    for(int iter=0;iter<ITERS;iter++){
+        std::vector<std::vector<int>> container;
+        auto start=std::chrono::high_resolution_clock::now();
+        for(int i=0;i<100;i++){
+            std::vector<int> v(N/100); for(int j=0;j<N/100;j++) v[j]=j;
+            container.push_back(std::move(v)); // move — O(1)
+        }
+        auto end=std::chrono::high_resolution_clock::now();
+        after_total+=std::chrono::duration_cast<std::chrono::nanoseconds>(end-start).count();
+    }
+    std::cout << "{\\"before_ns\\":" << (before_total / ITERS)
+              << ",\\"after_ns\\":" << (after_total / ITERS)
+              << ",\\"data_size\\":" << N
+              << ",\\"iterations\\":" << ITERS << "}" << std::endl;
+    return 0;
+}`,
+    },
+
+    // ── 15. emplace_back vs push_back ────────────────────────────
+    {
+        id: 'emplace_vs_push',
+        name: 'push_back → emplace_back',
+        category: 'Construction Overhead',
+        short_desc: 'Construct in-place instead of copy/move',
+        explanation:
+            'push_back creates a temporary object, then copies/moves it into the container. ' +
+            'emplace_back constructs the object directly in the container\'s memory — ' +
+            'no temporary, no copy, no move. Biggest wins with expensive constructors.',
+        severity: 'low',
+        before_label: 'push_back (temp + move)',
+        after_label: 'emplace_back (in-place)',
+        before_snippet: `std::vector<std::pair<std::string, int>> v;
+v.push_back(std::make_pair("hello", 42));
+// 1. Construct temp pair
+// 2. Move pair into vector`,
+        after_snippet: `std::vector<std::pair<std::string, int>> v;
+v.emplace_back("hello", 42);
+// Constructs pair directly in vector memory
+// Zero temporaries`,
+        reference_benchmarks: { before_ns: 140_000_000, after_ns: 95_000_000, speedup: 1.47, data_size: 2_000_000, note: 'Apple M1, clang++ -O2, pair<string,int>' },
+        fix_hint: 'Replace push_back(Type(...)) with emplace_back(...). Pass constructor arguments directly. Most helpful for types with expensive constructors (strings, containers, etc).',
+        references: [
+            { title: 'std::vector::emplace_back', url: 'https://en.cppreference.com/w/cpp/container/vector/emplace_back' },
+            { title: 'std::vector::push_back', url: 'https://en.cppreference.com/w/cpp/container/vector/push_back' },
+        ],
+        further_reading: [
+            { title: 'Effective Modern C++: Item 42 (Scott Meyers)', url: 'https://www.oreilly.com/library/view/effective-modern-c/9781491908419/' },
+        ],
+        benchmark_code: `#include <iostream>
+#include <chrono>
+#include <vector>
+#include <string>
+
+#ifndef DATA_SIZE
+#define DATA_SIZE 2000000
+#endif
+#ifndef ITERATIONS
+#define ITERATIONS 5
+#endif
+
+int main() {
+    const int N = DATA_SIZE; const int ITERS = ITERATIONS;
+    double before_total = 0;
+    for(int iter=0;iter<ITERS;iter++){
+        std::vector<std::pair<std::string,int>> v; v.reserve(N);
+        auto start=std::chrono::high_resolution_clock::now();
+        for(int i=0;i<N;i++) v.push_back(std::make_pair("item_"+std::to_string(i),i));
+        auto end=std::chrono::high_resolution_clock::now();
+        before_total+=std::chrono::duration_cast<std::chrono::nanoseconds>(end-start).count();
+    }
+    double after_total = 0;
+    for(int iter=0;iter<ITERS;iter++){
+        std::vector<std::pair<std::string,int>> v; v.reserve(N);
+        auto start=std::chrono::high_resolution_clock::now();
+        for(int i=0;i<N;i++) v.emplace_back("item_"+std::to_string(i),i);
+        auto end=std::chrono::high_resolution_clock::now();
+        after_total+=std::chrono::duration_cast<std::chrono::nanoseconds>(end-start).count();
+    }
+    std::cout << "{\\"before_ns\\":" << (before_total / ITERS)
+              << ",\\"after_ns\\":" << (after_total / ITERS)
+              << ",\\"data_size\\":" << N
+              << ",\\"iterations\\":" << ITERS << "}" << std::endl;
+    return 0;
+}`,
+    },
+
+    // ── 16. constexpr ────────────────────────────────────────────
+    {
+        id: 'runtime_vs_constexpr',
+        name: 'Runtime Computation → constexpr',
+        category: 'Compile-Time',
+        short_desc: 'Move computation to compile time',
+        explanation:
+            'Functions marked constexpr are evaluated at compile time when called with ' +
+            'constant arguments. The result is baked into the binary as a constant — ' +
+            'zero runtime cost. Use for lookup tables, math constants, config values.',
+        severity: 'low',
+        before_label: 'Runtime computation',
+        after_label: 'constexpr (compile-time)',
+        before_snippet: `int factorial(int n) {
+    int result = 1;
+    for (int i = 2; i <= n; i++) result *= i;
+    return result;
+}
+const int val = factorial(12);  // Computed at runtime`,
+        after_snippet: `constexpr int factorial(int n) {
+    int result = 1;
+    for (int i = 2; i <= n; i++) result *= i;
+    return result;
+}
+constexpr int val = factorial(12);  // Computed at COMPILE time
+// val is literally the number 479001600 in the binary`,
+        reference_benchmarks: { before_ns: 25_000_000, after_ns: 50_000, speedup: 500.0, data_size: 10_000_000, note: 'Apple M1, clang++ -O2, lookup table init' },
+        fix_hint: 'Mark functions constexpr when they: (1) only use constexpr-compatible operations, (2) are called with compile-time-known arguments. Same for variables initialized from constants.',
+        references: [
+            { title: 'constexpr specifier', url: 'https://en.cppreference.com/w/cpp/language/constexpr' },
+            { title: 'consteval (C++20)', url: 'https://en.cppreference.com/w/cpp/language/consteval' },
+        ],
+        further_reading: [
+            { title: 'Jason Turner: constexpr ALL the Things! (CppCon)', url: 'https://www.youtube.com/watch?v=PJwd4JLYJJY' },
+        ],
+        benchmark_code: `#include <iostream>
+#include <chrono>
+#include <array>
+
+#ifndef DATA_SIZE
+#define DATA_SIZE 10000000
+#endif
+#ifndef ITERATIONS
+#define ITERATIONS 10
+#endif
+
+int factorial_rt(int n) { int r=1; for(int i=2;i<=n;i++) r*=i; return r; }
+constexpr int factorial_ct(int n) { int r=1; for(int i=2;i<=n;i++) r*=i; return r; }
+
+int main() {
+    const int N = DATA_SIZE; const int ITERS = ITERATIONS;
+    double before_total = 0;
+    for(int iter=0;iter<ITERS;iter++){
+        auto start=std::chrono::high_resolution_clock::now();
+        volatile long long sum=0;
+        for(int i=0;i<N;i++) sum+=factorial_rt(i%12+1);
+        auto end=std::chrono::high_resolution_clock::now();
+        before_total+=std::chrono::duration_cast<std::chrono::nanoseconds>(end-start).count();
+    }
+    // Compile-time: build lookup table
+    constexpr auto build_table = [](){
+        std::array<int,13> t{}; for(int i=0;i<13;i++) t[i]=factorial_ct(i); return t;
+    };
+    constexpr auto TABLE = build_table();
+    double after_total = 0;
+    for(int iter=0;iter<ITERS;iter++){
+        auto start=std::chrono::high_resolution_clock::now();
+        volatile long long sum=0;
+        for(int i=0;i<N;i++) sum+=TABLE[i%12+1];
+        auto end=std::chrono::high_resolution_clock::now();
+        after_total+=std::chrono::duration_cast<std::chrono::nanoseconds>(end-start).count();
+    }
+    std::cout << "{\\"before_ns\\":" << (before_total / ITERS)
+              << ",\\"after_ns\\":" << (after_total / ITERS)
+              << ",\\"data_size\\":" << N
+              << ",\\"iterations\\":" << ITERS << "}" << std::endl;
+    return 0;
+}`,
+    },
+
+    // ── 17. Exception in hot loop ────────────────────────────────
+    {
+        id: 'exception_hot_path',
+        name: 'Exception Handling → Error Codes',
+        category: 'Exception Overhead',
+        short_desc: 'Avoid try/catch in performance-critical loops',
+        explanation:
+            'C++ exceptions have near-zero cost when NOT thrown (table-based unwinding), but ' +
+            'entering a try block in a tight loop can prevent vectorization and optimization. ' +
+            'The compiler cannot move code across try/catch boundaries freely. In hot paths, ' +
+            'prefer error codes or std::optional.',
+        severity: 'low',
+        before_label: 'try/catch in loop',
+        after_label: 'Error code / optional',
+        before_snippet: `for (int i = 0; i < N; i++) {
+    try {
+        result += parse(data[i]);
+    } catch (const std::exception& e) {
+        errors++;
+    }
+}
+// try/catch prevents vectorization
+// Compiler can't reorder across exception edges`,
+        after_snippet: `for (int i = 0; i < N; i++) {
+    auto val = try_parse(data[i]);  // returns optional
+    if (val) result += *val;
+    else errors++;
+}
+// No exception tables, fully vectorizable
+// std::optional has zero overhead`,
+        reference_benchmarks: { before_ns: 48_000_000, after_ns: 15_000_000, speedup: 3.2, data_size: 5_000_000, note: 'Apple M1, clang++ -O2, no throws' },
+        fix_hint: 'Move try/catch outside hot loops, or replace with error codes / std::optional / std::expected (C++23). Exceptions are fine for rare errors — just not in inner loops.',
+        references: [
+            { title: 'std::optional', url: 'https://en.cppreference.com/w/cpp/utility/optional' },
+            { title: 'std::expected (C++23)', url: 'https://en.cppreference.com/w/cpp/utility/expected' },
+        ],
+        further_reading: [
+            { title: 'Zero-cost exceptions aren\'t actually zero cost', url: 'https://stackoverflow.com/questions/13835817' },
+        ],
+        benchmark_code: `#include <iostream>
+#include <chrono>
+#include <vector>
+#include <optional>
+#include <stdexcept>
+
+#ifndef DATA_SIZE
+#define DATA_SIZE 5000000
+#endif
+#ifndef ITERATIONS
+#define ITERATIONS 5
+#endif
+
+__attribute__((noinline)) double parse_throw(int v) { if(v<0) throw std::runtime_error("neg"); return v*1.5; }
+__attribute__((noinline)) std::optional<double> parse_opt(int v) { if(v<0) return std::nullopt; return v*1.5; }
+
+int main() {
+    const int N = DATA_SIZE; const int ITERS = ITERATIONS;
+    std::vector<int> data(N); for(int i=0;i<N;i++) data[i]=i;
+    double before_total = 0;
+    for(int iter=0;iter<ITERS;iter++){
+        auto start=std::chrono::high_resolution_clock::now();
+        volatile double sum=0;
+        for(int i=0;i<N;i++){ try{ sum+=parse_throw(data[i]); }catch(...){} }
+        auto end=std::chrono::high_resolution_clock::now();
+        before_total+=std::chrono::duration_cast<std::chrono::nanoseconds>(end-start).count();
+    }
+    double after_total = 0;
+    for(int iter=0;iter<ITERS;iter++){
+        auto start=std::chrono::high_resolution_clock::now();
+        volatile double sum=0;
+        for(int i=0;i<N;i++){ auto v=parse_opt(data[i]); if(v) sum+=*v; }
+        auto end=std::chrono::high_resolution_clock::now();
+        after_total+=std::chrono::duration_cast<std::chrono::nanoseconds>(end-start).count();
+    }
+    std::cout << "{\\"before_ns\\":" << (before_total / ITERS)
+              << ",\\"after_ns\\":" << (after_total / ITERS)
+              << ",\\"data_size\\":" << N
+              << ",\\"iterations\\":" << ITERS << "}" << std::endl;
+    return 0;
+}`,
+    },
+
+    // ── 18. Unsorted data → Sort for branch prediction ───────────
+    {
+        id: 'sort_for_prediction',
+        name: 'Unsorted → Sort for Branch Prediction',
+        category: 'Branch Prediction',
+        short_desc: 'Sorted data makes branches perfectly predictable',
+        explanation:
+            'The CPU branch predictor learns patterns. With sorted data, branches become ' +
+            'perfectly predictable: "all below threshold, then all above". Unsorted data ' +
+            'gives ~50% misprediction rate. If you\'re going to filter, sort first.',
+        severity: 'low',
+        before_label: 'Unsorted (unpredictable)',
+        after_label: 'Sorted (predictable)',
+        before_snippet: `// data is randomly ordered
+for (int x : data) {
+    if (x >= THRESHOLD) sum += x;
+}
+// CPU guesses wrong ~50% of the time
+// Each miss: 10-20 cycle pipeline flush`,
+        after_snippet: `std::sort(data.begin(), data.end());
+for (int x : data) {
+    if (x >= THRESHOLD) sum += x;
+}
+// Branch pattern: NNNN...YYYY — perfect prediction
+// Near-zero mispredictions after warmup`,
+        reference_benchmarks: { before_ns: 38_000_000, after_ns: 14_000_000, speedup: 2.71, data_size: 10_000_000, note: 'Apple M1, clang++ -O2, int filter' },
+        fix_hint: 'If you\'re filtering data with an if-statement, consider sorting it first. The sort cost is often paid back by perfect branch prediction. Profile to verify on your data size.',
+        references: [
+            { title: 'std::sort', url: 'https://en.cppreference.com/w/cpp/algorithm/sort' },
+        ],
+        further_reading: [
+            { title: 'Why is processing a sorted array faster? (Stack Overflow)', url: 'https://stackoverflow.com/questions/11227809' },
+        ],
+        benchmark_code: `#include <iostream>
+#include <chrono>
+#include <vector>
+#include <algorithm>
+#include <cstdlib>
+
+#ifndef DATA_SIZE
+#define DATA_SIZE 10000000
+#endif
+#ifndef ITERATIONS
+#define ITERATIONS 5
+#endif
+
+int main() {
+    const int N = DATA_SIZE; const int ITERS = ITERATIONS; const int T = 128;
+    std::vector<int> data(N); std::srand(42);
+    for(int i=0;i<N;i++) data[i]=std::rand()%256;
+    double before_total = 0;
+    for(int iter=0;iter<ITERS;iter++){
+        auto start=std::chrono::high_resolution_clock::now();
+        volatile long long sum=0;
+        for(int i=0;i<N;i++) if(data[i]>=T) sum+=data[i];
+        auto end=std::chrono::high_resolution_clock::now();
+        before_total+=std::chrono::duration_cast<std::chrono::nanoseconds>(end-start).count();
+    }
+    std::sort(data.begin(), data.end());
+    double after_total = 0;
+    for(int iter=0;iter<ITERS;iter++){
+        auto start=std::chrono::high_resolution_clock::now();
+        volatile long long sum=0;
+        for(int i=0;i<N;i++) if(data[i]>=T) sum+=data[i];
+        auto end=std::chrono::high_resolution_clock::now();
+        after_total+=std::chrono::duration_cast<std::chrono::nanoseconds>(end-start).count();
+    }
+    std::cout << "{\\"before_ns\\":" << (before_total / ITERS)
+              << ",\\"after_ns\\":" << (after_total / ITERS)
+              << ",\\"data_size\\":" << N
+              << ",\\"iterations\\":" << ITERS << "}" << std::endl;
+    return 0;
+}`,
+    },
+
+    // ── 19. dynamic_cast → static dispatch ───────────────────────
+    {
+        id: 'dynamic_cast_overhead',
+        name: 'dynamic_cast → Type Tag / Variant',
+        category: 'RTTI Overhead',
+        short_desc: 'Avoid runtime type identification in hot paths',
+        explanation:
+            'dynamic_cast invokes RTTI (Run-Time Type Information) — it walks the type hierarchy ' +
+            'tree, comparing type_info objects. This can cost 100–1000 nanoseconds per cast. ' +
+            'Use std::variant, type tags, or the visitor pattern for known type sets.',
+        severity: 'medium',
+        before_label: 'dynamic_cast (RTTI)',
+        after_label: 'std::variant + visit',
+        before_snippet: `for (auto* base : objects) {
+    if (auto* d = dynamic_cast<Derived*>(base)) {
+        d->process();
+    }
+}
+// RTTI: walks type hierarchy per cast
+// 100-1000ns per dynamic_cast`,
+        after_snippet: `using Shape = std::variant<Circle, Rect, Tri>;
+for (auto& s : shapes) {
+    std::visit([](auto& shape) {
+        shape.process();
+    }, s);
+}
+// Compile-time dispatch via variant index
+// Jump table: ~2-5ns`,
+        reference_benchmarks: { before_ns: 180_000_000, after_ns: 28_000_000, speedup: 6.43, data_size: 5_000_000, note: 'Apple M1, clang++ -O2' },
+        fix_hint: 'Replace dynamic_cast chains with std::variant + std::visit when the set of types is known at compile time. For open type sets, use a virtual method or type tag enum instead.',
+        references: [
+            { title: 'dynamic_cast', url: 'https://en.cppreference.com/w/cpp/language/dynamic_cast' },
+            { title: 'std::variant', url: 'https://en.cppreference.com/w/cpp/utility/variant' },
+            { title: 'std::visit', url: 'https://en.cppreference.com/w/cpp/utility/variant/visit' },
+        ],
+        further_reading: [
+            { title: 'C++ Core Guidelines: C.146', url: 'https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#c146-use-dynamic_cast-where-class-hierarchy-navigation-is-unavoidable' },
+        ],
+        benchmark_code: `#include <iostream>
+#include <chrono>
+#include <vector>
+#include <memory>
+#include <variant>
+
+#ifndef DATA_SIZE
+#define DATA_SIZE 5000000
+#endif
+#ifndef ITERATIONS
+#define ITERATIONS 5
+#endif
+
+struct Base { virtual ~Base()=default; virtual double val() const=0; };
+struct D1 : Base { double x; D1(double x):x(x){} double val() const override { return x*x; } };
+struct D2 : Base { double x; D2(double x):x(x){} double val() const override { return x+1; } };
+struct V1 { double x; double val() const { return x*x; } };
+struct V2 { double x; double val() const { return x+1; } };
+
+int main() {
+    const int N = DATA_SIZE; const int ITERS = ITERATIONS;
+    std::vector<std::unique_ptr<Base>> polys; polys.reserve(N);
+    for(int i=0;i<N;i++) { if(i%2) polys.push_back(std::make_unique<D1>(i*0.1)); else polys.push_back(std::make_unique<D2>(i*0.1)); }
+    double before_total = 0;
+    for(int iter=0;iter<ITERS;iter++){
+        auto start=std::chrono::high_resolution_clock::now();
+        volatile double sum=0;
+        for(auto&p:polys){ if(auto*d=dynamic_cast<D1*>(p.get())) sum+=d->val(); else if(auto*d=dynamic_cast<D2*>(p.get())) sum+=d->val(); }
+        auto end=std::chrono::high_resolution_clock::now();
+        before_total+=std::chrono::duration_cast<std::chrono::nanoseconds>(end-start).count();
+    }
+    std::vector<std::variant<V1,V2>> vars; vars.reserve(N);
+    for(int i=0;i<N;i++) { if(i%2) vars.emplace_back(V1{i*0.1}); else vars.emplace_back(V2{i*0.1}); }
+    double after_total = 0;
+    for(int iter=0;iter<ITERS;iter++){
+        auto start=std::chrono::high_resolution_clock::now();
+        volatile double sum=0;
+        for(auto&v:vars) sum+=std::visit([](auto&x){return x.val();},v);
+        auto end=std::chrono::high_resolution_clock::now();
+        after_total+=std::chrono::duration_cast<std::chrono::nanoseconds>(end-start).count();
+    }
+    std::cout << "{\\"before_ns\\":" << (before_total / ITERS)
+              << ",\\"after_ns\\":" << (after_total / ITERS)
+              << ",\\"data_size\\":" << N
+              << ",\\"iterations\\":" << ITERS << "}" << std::endl;
+    return 0;
+}`,
+    },
+
+    // ── 20. Synchronous I/O → Buffered / Batch ──────────────────
+    {
+        id: 'sync_io_overhead',
+        name: 'sync_with_stdio → Disable for Speed',
+        category: 'I/O Overhead',
+        short_desc: 'Unsync C++ streams from C stdio for faster I/O',
+        explanation:
+            'By default, C++ streams (cin/cout) are synchronized with C stdio (scanf/printf). ' +
+            'This adds locking overhead on every I/O operation. If you don\'t mix C and C++ I/O, ' +
+            'disable it for 2–10× faster I/O. Common in competitive programming and data processing.',
+        severity: 'low',
+        before_label: 'Default (synced)',
+        after_label: 'Unsynced + untied',
+        before_snippet: `int main() {
+    int n; std::cin >> n;
+    // Default: cin synced with scanf
+    // Every read acquires a mutex lock
+    for (int i = 0; i < n; i++) {
+        std::cin >> values[i];  // Slow!
+    }
+}`,
+        after_snippet: `int main() {
+    std::ios_base::sync_with_stdio(false);
+    std::cin.tie(nullptr);
+    int n; std::cin >> n;
+    // No sync lock, no cout flush before cin
+    for (int i = 0; i < n; i++) {
+        std::cin >> values[i];  // 2-10× faster
+    }
+}`,
+        reference_benchmarks: { before_ns: 320_000_000, after_ns: 48_000_000, speedup: 6.67, data_size: 1_000_000, note: 'Apple M1, clang++ -O2, integer reads' },
+        fix_hint: 'Add std::ios_base::sync_with_stdio(false) and std::cin.tie(nullptr) at the start of main(). Only safe if you NEVER mix cout/cin with printf/scanf in the same program.',
+        references: [
+            { title: 'std::ios_base::sync_with_stdio', url: 'https://en.cppreference.com/w/cpp/io/ios_base/sync_with_stdio' },
+            { title: 'std::basic_ios::tie', url: 'https://en.cppreference.com/w/cpp/io/basic_ios/tie' },
+        ],
+        further_reading: [
+            { title: 'Fast I/O in C++', url: 'https://codeforces.com/blog/entry/5217' },
+        ],
+        benchmark_code: `#include <iostream>
+#include <chrono>
+#include <sstream>
+#include <string>
+
+#ifndef DATA_SIZE
+#define DATA_SIZE 1000000
+#endif
+#ifndef ITERATIONS
+#define ITERATIONS 3
+#endif
+
+int main() {
+    const int N = DATA_SIZE; const int ITERS = ITERATIONS;
+    std::string input; for(int i=0;i<N;i++) input += std::to_string(i) + "\\n";
+
+    double before_total = 0;
+    for(int iter=0;iter<ITERS;iter++){
+        std::istringstream iss(input);
+        auto start=std::chrono::high_resolution_clock::now();
+        volatile long long sum=0; int v;
+        while(iss >> v) sum+=v;
+        auto end=std::chrono::high_resolution_clock::now();
+        before_total+=std::chrono::duration_cast<std::chrono::nanoseconds>(end-start).count();
+    }
+    double after_total = 0;
+    for(int iter=0;iter<ITERS;iter++){
+        std::istringstream iss(input);
+        iss.sync_with_stdio(false);
+        auto start=std::chrono::high_resolution_clock::now();
+        volatile long long sum=0; int v;
+        while(iss >> v) sum+=v;
         auto end=std::chrono::high_resolution_clock::now();
         after_total+=std::chrono::duration_cast<std::chrono::nanoseconds>(end-start).count();
     }

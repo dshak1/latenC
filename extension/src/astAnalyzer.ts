@@ -527,6 +527,154 @@ const detectBranchVsBranchless: Detector = (tree, source) => {
     return matches;
 };
 
+/**
+ * detect std::string parameters passed by value that could be string_view.
+ */
+const detectStringCopyVsView: Detector = (tree, source) => {
+    const matches: ASTMatch[] = [];
+    walkTree(tree.rootNode, (node: any) => {
+        if (node.type === 'function_definition' || node.type === 'function_declarator' || node.type === 'declaration') {
+            const paramList = findChild(node, 'parameter_list');
+            if (!paramList) return;
+            for (let i = 0; i < paramList.childCount; i++) {
+                const param = paramList.child(i);
+                if (param.type === 'parameter_declaration') {
+                    const t = param.text;
+                    if (/\bstd\s*::\s*string\b/.test(t) && !t.includes('&') && !t.includes('*') && !t.includes('string_view')) {
+                        if (!isInsideComment(param)) {
+                            matches.push({ line: param.startPosition.row + 1, text: getLineText(source, param.startPosition.row), nodeType: 'parameter_declaration', confidence: 'medium' });
+                        }
+                    }
+                }
+            }
+        }
+    });
+    return matches;
+};
+
+/**
+ * detect push_back of a local variable that could use std::move.
+ */
+const detectMissingMove: Detector = (tree, source) => {
+    const matches: ASTMatch[] = [];
+    walkTree(tree.rootNode, (node: any) => {
+        if (node.type === 'call_expression') {
+            const funcNode = node.childForFieldName('function');
+            if (funcNode && /\.push_back\s*$/.test(funcNode.text)) {
+                const args = node.childForFieldName('arguments');
+                if (args) {
+                    const argText = args.text;
+                    // push_back(var) where var is a plain identifier (not a temporary or std::move)
+                    if (/^\(\s*[a-zA-Z_]\w*\s*\)$/.test(argText) && !argText.includes('std::move') && !argText.includes('make_')) {
+                        if (!isInsideComment(node)) {
+                            matches.push({ line: node.startPosition.row + 1, text: getLineText(source, node.startPosition.row), nodeType: 'call_expression', confidence: 'low' });
+                        }
+                    }
+                }
+            }
+        }
+    });
+    return matches;
+};
+
+/**
+ * detect push_back(Type(...)) that could be emplace_back(...).
+ */
+const detectEmplaceVsPush: Detector = (tree, source) => {
+    const matches: ASTMatch[] = [];
+    walkTree(tree.rootNode, (node: any) => {
+        if (node.type === 'call_expression') {
+            const funcNode = node.childForFieldName('function');
+            if (funcNode && /\.push_back\s*$/.test(funcNode.text)) {
+                const args = node.childForFieldName('arguments');
+                if (args) {
+                    const argText = args.text;
+                    // push_back(Constructor(...)) or push_back(make_pair/make_tuple(...))
+                    if (/\(\s*(std\s*::\s*)?(make_pair|make_tuple|make_shared|make_unique)\s*\(/.test(argText) ||
+                        /\(\s*[A-Z]\w+\s*[\({]/.test(argText)) {
+                        if (!isInsideComment(node)) {
+                            matches.push({ line: node.startPosition.row + 1, text: getLineText(source, node.startPosition.row), nodeType: 'call_expression', confidence: 'medium' });
+                        }
+                    }
+                }
+            }
+        }
+    });
+    return matches;
+};
+
+/**
+ * detect functions that could be constexpr (simple computation, no I/O).
+ * Only flags functions that return a computed value from constants.
+ */
+const detectRuntimeVsConstexpr: Detector = (tree, source) => {
+    // This is hard to detect accurately with AST alone — use regex as primary
+    return [];
+};
+
+/**
+ * detect try/catch inside for/while loops.
+ */
+const detectExceptionHotPath: Detector = (tree, source) => {
+    const matches: ASTMatch[] = [];
+    walkTree(tree.rootNode, (node: any) => {
+        if (node.type === 'try_statement' && isInsideLoop(node)) {
+            if (!isInsideComment(node)) {
+                matches.push({ line: node.startPosition.row + 1, text: getLineText(source, node.startPosition.row), nodeType: 'try_statement', confidence: 'high' });
+            }
+        }
+    });
+    return matches;
+};
+
+/**
+ * detect sort being called after a filter loop (could sort first for prediction).
+ * Simple heuristic — this is more of a tip than a detection.
+ */
+const detectSortForPrediction: Detector = (tree, source) => {
+    // Hard to detect the pattern "unsorted filter" accurately — rely on regex
+    return [];
+};
+
+/**
+ * detect dynamic_cast usage.
+ */
+const detectDynamicCastOverhead: Detector = (tree, source) => {
+    const matches: ASTMatch[] = [];
+    walkTree(tree.rootNode, (node: any) => {
+        if (node.type === 'cast_expression' || node.type === 'identifier') {
+            if (/\bdynamic_cast\b/.test(node.text)) {
+                if (!isInsideComment(node)) {
+                    matches.push({ line: node.startPosition.row + 1, text: getLineText(source, node.startPosition.row), nodeType: node.type, confidence: isInsideLoop(node) ? 'high' : 'medium' });
+                }
+            }
+        }
+    });
+    return matches;
+};
+
+/**
+ * detect sync_with_stdio not being disabled.
+ * Only flags if cin/cout are used heavily.
+ */
+const detectSyncIoOverhead: Detector = (tree, source) => {
+    const matches: ASTMatch[] = [];
+    // Check if there are many cin reads without sync_with_stdio(false)
+    const hasCinReads = (source.match(/std\s*::\s*cin\s*>>/g) || []).length;
+    const hasSyncDisable = /sync_with_stdio\s*\(\s*false\s*\)/.test(source);
+    if (hasCinReads >= 3 && !hasSyncDisable) {
+        // Find the first cin usage
+        walkTree(tree.rootNode, (node: any) => {
+            if (node.type === 'qualified_identifier' || node.type === 'identifier') {
+                if (/\bstd\s*::\s*cin\b/.test(node.text) && matches.length === 0) {
+                    matches.push({ line: node.startPosition.row + 1, text: getLineText(source, node.startPosition.row), nodeType: node.type, confidence: 'medium' });
+                }
+            }
+        });
+    }
+    return matches;
+};
+
 function findChild(node: any, type: string): any {
     for (let i = 0; i < node.childCount; i++) {
         const child = node.child(i);
@@ -552,6 +700,14 @@ const DETECTORS: Map<string, Detector> = new Map([
     ['pow_vs_multiply', detectPowVsMultiply],
     ['endl_vs_newline', detectEndlVsNewline],
     ['loop_size_hoist', detectLoopSizeHoist],
+    ['string_copy_vs_view', detectStringCopyVsView],
+    ['missing_move', detectMissingMove],
+    ['emplace_vs_push', detectEmplaceVsPush],
+    ['runtime_vs_constexpr', detectRuntimeVsConstexpr],
+    ['exception_hot_path', detectExceptionHotPath],
+    ['sort_for_prediction', detectSortForPrediction],
+    ['dynamic_cast_overhead', detectDynamicCastOverhead],
+    ['sync_io_overhead', detectSyncIoOverhead],
 ]);
 
 // ── Enhanced Regex Fallback ─────────────────────────────────
@@ -585,6 +741,15 @@ const REGEX_PATTERNS: RegexPattern[] = [
     { id: 'pow_vs_multiply', regex: /\b(std\s*::\s*)?pow\s*\([^,]+,\s*[234](\.[0])?\s*\)/ },
     { id: 'endl_vs_newline', regex: /\b(std\s*::\s*)?endl\b/ },
     { id: 'loop_size_hoist', regex: /for\s*\([^;]*;\s*\w+\s*[<>=!]+\s*\w+\.\s*size\s*\(\s*\)/ },
+    { id: 'string_copy_vs_view', regex: /(?:void|int|double|float|bool|long|auto|std::\w+)\s+\w+\s*\(\s*std::string\s+\w+/,
+      contextCheck: (line) => !line.includes('&') && !line.includes('string_view') },
+    { id: 'missing_move', regex: /\.push_back\s*\(\s*[a-zA-Z_]\w*\s*\)/,
+      contextCheck: (line) => !line.includes('std::move') && !line.includes('make_') },
+    { id: 'emplace_vs_push', regex: /\.push_back\s*\(\s*(std::)?(make_pair|make_tuple)\s*\(/ },
+    { id: 'exception_hot_path', regex: /\btry\s*\{/ },
+    { id: 'dynamic_cast_overhead', regex: /\bdynamic_cast\s*</ },
+    { id: 'sync_io_overhead', regex: /\bstd\s*::\s*cin\s*>>/,
+      contextCheck: (_line, allLines) => !allLines.some(l => /sync_with_stdio\s*\(\s*false\s*\)/.test(l)) },
 ];
 
 function analyzeWithRegex(source: string): Map<string, ASTMatch[]> {

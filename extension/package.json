@@ -43,6 +43,10 @@
       {
         "command": "latencylens.benchmarkPattern",
         "title": "LatencyLens: Benchmark Pattern"
+      },
+      {
+        "command": "latencylens.toggle",
+        "title": "LatencyLens: Toggle On/Off"
       }
     ],
     "menus": {

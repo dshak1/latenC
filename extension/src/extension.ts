@@ -22,6 +22,7 @@ let analyzer: Analyzer;
 let diagnosticCollection: vscode.DiagnosticCollection;
 let statusBarItem: vscode.StatusBarItem;
 let lastFindings: Map<string, Finding[]> = new Map();
+let extensionEnabled = true;
 
 export async function activate(context: vscode.ExtensionContext) {
     console.log('LatencyLens activating...');
@@ -73,6 +74,27 @@ export async function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
         vscode.commands.registerCommand('latencylens.benchmarkPattern', async (patternId: string) => {
             await runBenchmarkInline(patternId);
+        })
+    );
+
+    // Toggle on/off
+    context.subscriptions.push(
+        vscode.commands.registerCommand('latencylens.toggle', () => {
+            extensionEnabled = !extensionEnabled;
+            if (!extensionEnabled) {
+                diagnosticCollection.clear();
+                lastFindings.clear();
+                lensChangeEmitter.fire();
+                updateStatusBar(0, false);
+                vscode.window.showInformationMessage('LatencyLens disabled');
+            } else {
+                updateStatusBar(0, true);
+                vscode.window.showInformationMessage('LatencyLens enabled');
+                const editor = vscode.window.activeTextEditor;
+                if (editor && (editor.document.languageId === 'cpp' || editor.document.languageId === 'c')) {
+                    analyzeDocument(editor.document);
+                }
+            }
         })
     );
 
@@ -128,6 +150,7 @@ export async function activate(context: vscode.ExtensionContext) {
 // ── Analysis ─────────────────────────────────────────────
 
 async function analyzeDocument(document: vscode.TextDocument) {
+    if (!extensionEnabled) return;
     try {
         const code = document.getText();
         const findings = analyzer.analyze(code);
@@ -240,148 +263,192 @@ async function runBenchmarkInline(patternId: string) {
 // ── Benchmark Result Panel ───────────────────────────────
 
 import { BenchmarkResult } from './analyzer';
-import { getPatternById, PATTERNS } from './patterns';
+import { getPatternById, PATTERNS, Pattern } from './patterns';
 
 class BenchmarkResultPanel {
     private static panel: vscode.WebviewPanel | undefined;
 
     static show(result: BenchmarkResult) {
-        // Find pattern by name (benchmark result has pattern_name, not id)
         const pattern = PATTERNS.find(p => p.name === result.pattern_name) || null;
-        
-        const beforeLabel = pattern?.before_label || 'Before';
-        const afterLabel = pattern?.after_label || 'After';
-        const patternName = result.pattern_name || 'Unknown';
+        const html = BenchmarkResultPanel.getHtml(result, pattern);
 
         if (BenchmarkResultPanel.panel) {
-            BenchmarkResultPanel.panel.webview.html = BenchmarkResultPanel.getHtml(result, patternName, beforeLabel, afterLabel);
+            BenchmarkResultPanel.panel.webview.html = html;
             BenchmarkResultPanel.panel.reveal(vscode.ViewColumn.Beside, true);
             return;
         }
 
         BenchmarkResultPanel.panel = vscode.window.createWebviewPanel(
             'latencylens.benchResult',
-            `⚡ ${patternName}`,
+            `⚡ ${result.pattern_name || 'Benchmark'}`,
             { viewColumn: vscode.ViewColumn.Beside, preserveFocus: true },
             { enableScripts: true, retainContextWhenHidden: false }
         );
 
-        BenchmarkResultPanel.panel.webview.html = BenchmarkResultPanel.getHtml(result, patternName, beforeLabel, afterLabel);
-
-        BenchmarkResultPanel.panel.onDidDispose(() => {
-            BenchmarkResultPanel.panel = undefined;
-        });
+        BenchmarkResultPanel.panel.webview.html = html;
+        BenchmarkResultPanel.panel.onDidDispose(() => { BenchmarkResultPanel.panel = undefined; });
     }
 
-    private static getHtml(result: BenchmarkResult, name: string, beforeLabel: string, afterLabel: string): string {
-        const beforeMs = (result.before_ns / 1e6).toFixed(2);
-        const afterMs = (result.after_ns / 1e6).toFixed(2);
-        const sourceLabel = result.source === 'local'
-            ? '<span style="background:rgba(46,213,115,0.15);color:#2ed573;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600">🖥️ Live — your hardware</span>'
-            : '<span style="background:rgba(255,165,2,0.15);color:#ffa502;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600">📊 Reference data</span>';
-        const noteHtml = result.note ? `<p style="color:#555570;font-size:11px;font-style:italic;margin-top:6px">${result.note}</p>` : '';
+    private static esc(s: string): string {
+        return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    private static getHtml(r: BenchmarkResult, p: Pattern | null): string {
+        const beforeMs = (r.before_ns / 1e6).toFixed(2);
+        const afterMs = (r.after_ns / 1e6).toFixed(2);
+        const pct = Math.round((1 - r.after_ns / r.before_ns) * 100);
+        const barW = Math.max(5, Math.round((r.after_ns / r.before_ns) * 100));
+        const name = r.pattern_name || 'Benchmark';
+        const beforeLabel = p?.before_label || 'Before';
+        const afterLabel = p?.after_label || 'After';
+        const sourceBadge = r.source === 'local'
+            ? '<span class="badge badge-live">LIVE</span>'
+            : '<span class="badge badge-ref">REF</span>';
+        const note = r.note ? `<span class="note">${BenchmarkResultPanel.esc(r.note)}</span>` : '';
+
+        const beforeCode = p ? BenchmarkResultPanel.esc(p.before_snippet) : '';
+        const afterCode = p ? BenchmarkResultPanel.esc(p.after_snippet) : '';
+        const fixHint = p?.fix_hint ? `<section class="section"><h2>How to Fix</h2><p class="fix-text">${BenchmarkResultPanel.esc(p.fix_hint)}</p></section>` : '';
+        const refs = p?.references?.length
+            ? `<section class="section"><h2>C++ Reference</h2><ul class="link-list">${p.references.map(l => `<li><a href="${l.url}">${BenchmarkResultPanel.esc(l.title)}</a></li>`).join('')}</ul></section>`
+            : '';
+        const reading = p?.further_reading?.length
+            ? `<section class="section"><h2>Further Reading</h2><ul class="link-list">${p.further_reading.map(l => `<li><a href="${l.url}">${BenchmarkResultPanel.esc(l.title)}</a></li>`).join('')}</ul></section>`
+            : '';
+        const explanation = p?.explanation
+            ? `<p class="explanation">${BenchmarkResultPanel.esc(p.explanation)}</p>`
+            : '';
 
         return /*html*/`<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com;">
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700;800&family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline';">
 <style>
 :root {
-    --bg: var(--vscode-editor-background, #0a0a0f);
-    --bg2: var(--vscode-sideBar-background, #12121a);
-    --card: var(--vscode-editorWidget-background, #1a1a25);
-    --border: var(--vscode-widget-border, #2a2a3a);
-    --text: var(--vscode-editor-foreground, #e8e8f0);
-    --muted: var(--vscode-descriptionForeground, #8888a0);
-    --red: #ff4757; --green: #2ed573; --gold: #ffa502;
+    --bg: var(--vscode-editor-background, #1e1e1e);
+    --card: var(--vscode-editorWidget-background, #252526);
+    --border: var(--vscode-widget-border, #3c3c3c);
+    --text: var(--vscode-editor-foreground, #cccccc);
+    --muted: var(--vscode-descriptionForeground, #808080);
+    --link: var(--vscode-textLink-foreground, #3794ff);
+    --red: #e06c75;
+    --green: #98c379;
+    --gold: #e5c07b;
+    --mono: 'SF Mono', 'Cascadia Code', 'Fira Code', Menlo, Monaco, 'Courier New', monospace;
+    --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); padding: 24px; }
-.header { text-align: center; margin-bottom: 24px; }
-.header h1 { font-family: 'JetBrains Mono', monospace; font-size: 18px; font-weight: 800; margin-bottom: 4px; }
-.header .source { margin-top: 8px; }
-.cards { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 24px; }
-.card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; text-align: center; }
-.card.accent { background: rgba(255,165,2,0.08); border-color: var(--gold); }
-.card-label { display: block; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: var(--muted); margin-bottom: 8px; }
-.card-value { display: block; font-family: 'JetBrains Mono', monospace; font-size: 32px; font-weight: 800; }
-.card-value.red { color: var(--red); }
-.card-value.green { color: var(--green); }
-.card-value.gold { color: var(--gold); }
-.card-unit { font-size: 14px; font-weight: 600; opacity: 0.7; }
-.chart-wrap { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; height: 280px; }
+body { font-family: var(--sans); background: var(--bg); color: var(--text); padding: 20px; font-size: 13px; line-height: 1.5; }
+
+/* ── Header ── */
+.header { margin-bottom: 20px; }
+.header h1 { font-family: var(--mono); font-size: 15px; font-weight: 600; letter-spacing: -0.3px; display: flex; align-items: center; gap: 8px; }
+.badge { font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 3px; letter-spacing: 0.5px; vertical-align: middle; }
+.badge-live { background: rgba(152,195,121,0.15); color: var(--green); }
+.badge-ref { background: rgba(229,192,123,0.15); color: var(--gold); }
+.category { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+/* ── Timing bar ── */
+.timing { background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 16px; margin-bottom: 16px; }
+.timing-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.timing-row:last-child { margin-bottom: 0; }
+.timing-label { font-family: var(--mono); font-size: 11px; color: var(--muted); width: 64px; flex-shrink: 0; text-align: right; }
+.timing-bar { flex: 1; height: 24px; border-radius: 4px; position: relative; }
+.timing-bar-fill { height: 100%; border-radius: 4px; transition: width 0.6s ease; }
+.timing-bar-fill.slow { background: var(--red); }
+.timing-bar-fill.fast { background: var(--green); }
+.timing-val { font-family: var(--mono); font-size: 12px; font-weight: 600; width: 72px; flex-shrink: 0; }
+.timing-val.slow { color: var(--red); }
+.timing-val.fast { color: var(--green); }
+
+.speedup-line { display: flex; justify-content: space-between; align-items: baseline; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); }
+.speedup-num { font-family: var(--mono); font-size: 20px; font-weight: 700; color: var(--gold); }
+.speedup-detail { font-size: 11px; color: var(--muted); }
+.note { font-size: 11px; color: var(--muted); font-style: italic; }
+
+/* ── Code diff ── */
+.diff { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+.diff-col { background: var(--card); border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.diff-header { font-family: var(--mono); font-size: 11px; font-weight: 600; padding: 6px 12px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 6px; }
+.diff-header.before { color: var(--red); }
+.diff-header.after { color: var(--green); }
+.diff-header .dot { width: 6px; height: 6px; border-radius: 50%; }
+.diff-header.before .dot { background: var(--red); }
+.diff-header.after .dot { background: var(--green); }
+pre.code { font-family: var(--mono); font-size: 11.5px; line-height: 1.6; padding: 10px 12px; overflow-x: auto; white-space: pre; color: var(--text); tab-size: 4; }
+pre.code .comment { color: var(--muted); }
+
+/* ── Sections ── */
+.explanation { font-size: 12.5px; color: var(--text); line-height: 1.6; margin-bottom: 16px; opacity: 0.85; }
+.section { margin-bottom: 16px; }
+.section h2 { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-bottom: 8px; }
+.fix-text { font-size: 12.5px; line-height: 1.6; padding: 10px 12px; background: var(--card); border: 1px solid var(--border); border-radius: 6px; border-left: 3px solid var(--green); }
+.link-list { list-style: none; }
+.link-list li { margin-bottom: 4px; }
+.link-list a { color: var(--link); text-decoration: none; font-size: 12px; }
+.link-list a:hover { text-decoration: underline; }
+.link-list a::before { content: '→ '; color: var(--muted); }
+
+/* ── Footer ── */
+.footer { margin-top: 20px; padding-top: 12px; border-top: 1px solid var(--border); font-size: 10px; color: var(--muted); text-align: center; }
 </style>
 </head>
 <body>
 <div class="header">
-    <h1>⚡ ${name}</h1>
-    <div class="source">${sourceLabel}</div>
-    ${noteHtml}
+    <h1>${BenchmarkResultPanel.esc(name)} ${sourceBadge}</h1>
+    ${p ? `<div class="category">${BenchmarkResultPanel.esc(p.category)}</div>` : ''}
 </div>
-<div class="cards">
-    <div class="card">
-        <span class="card-label">${beforeLabel}</span>
-        <span class="card-value red">${beforeMs}<span class="card-unit">ms</span></span>
+
+<div class="timing">
+    <div class="timing-row">
+        <span class="timing-label">${BenchmarkResultPanel.esc(beforeLabel)}</span>
+        <div class="timing-bar"><div class="timing-bar-fill slow" style="width:100%"></div></div>
+        <span class="timing-val slow">${beforeMs} ms</span>
     </div>
-    <div class="card accent">
-        <span class="card-label">Speedup</span>
-        <span class="card-value gold">${result.speedup}×</span>
+    <div class="timing-row">
+        <span class="timing-label">${BenchmarkResultPanel.esc(afterLabel)}</span>
+        <div class="timing-bar"><div class="timing-bar-fill fast" style="width:${barW}%"></div></div>
+        <span class="timing-val fast">${afterMs} ms</span>
     </div>
-    <div class="card">
-        <span class="card-label">${afterLabel}</span>
-        <span class="card-value green">${afterMs}<span class="card-unit">ms</span></span>
+    <div class="speedup-line">
+        <span class="speedup-num">${r.speedup}× faster</span>
+        <span class="speedup-detail">${pct}% less time &middot; N=${(r.data_size || 0).toLocaleString()}</span>
     </div>
+    ${note}
 </div>
-<div class="chart-wrap"><canvas id="chart"></canvas></div>
-<script>
-document.addEventListener('DOMContentLoaded', () => {
-    const ctx = document.getElementById('chart').getContext('2d');
-    new Chart(ctx, {
-        type: 'bar',
-        data: {
-            labels: [${JSON.stringify(beforeLabel)}, ${JSON.stringify(afterLabel)}],
-            datasets: [{
-                data: [${result.before_ns}, ${result.after_ns}],
-                backgroundColor: ['rgba(255,71,87,0.7)', 'rgba(46,213,115,0.7)'],
-                borderColor: ['rgba(255,71,87,1)', 'rgba(46,213,115,1)'],
-                borderWidth: 2, borderRadius: 8, barPercentage: 0.6
-            }]
-        },
-        options: {
-            responsive: true, maintainAspectRatio: false,
-            animation: { duration: 800, easing: 'easeOutQuart' },
-            plugins: {
-                legend: { display: false },
-                title: {
-                    display: true,
-                    text: '${result.speedup}× faster — N=${(result.data_size || 100000).toLocaleString()}',
-                    color: '#e8e8f0', font: { family: 'JetBrains Mono', size: 13, weight: '700' }
-                }
-            },
-            scales: {
-                y: {
-                    beginAtZero: true,
-                    grid: { color: 'rgba(42,42,58,0.5)' },
-                    ticks: { color: '#8888a0', font: { family: 'JetBrains Mono', size: 10 },
-                        callback: v => { if(v>=1e9) return (v/1e9).toFixed(1)+'s'; if(v>=1e6) return (v/1e6).toFixed(1)+'ms'; if(v>=1e3) return (v/1e3).toFixed(0)+'µs'; return v+'ns'; }
-                    }
-                },
-                x: { grid: { display: false }, ticks: { color: '#e8e8f0', font: { family: 'JetBrains Mono', size: 12, weight: '700' } } }
-            }
-        }
-    });
-});
-</script>
+
+${explanation}
+
+${(beforeCode || afterCode) ? `
+<div class="diff">
+    <div class="diff-col">
+        <div class="diff-header before"><span class="dot"></span> ${BenchmarkResultPanel.esc(beforeLabel)}</div>
+        <pre class="code">${beforeCode}</pre>
+    </div>
+    <div class="diff-col">
+        <div class="diff-header after"><span class="dot"></span> ${BenchmarkResultPanel.esc(afterLabel)}</div>
+        <pre class="code">${afterCode}</pre>
+    </div>
+</div>` : ''}
+
+${fixHint}
+${refs}
+${reading}
+
+<div class="footer">LatencyLens &middot; Speedup (up to) &mdash; actual results depend on data, compiler, and hardware</div>
 </body></html>`;
     }
 }
 
 // ── Helpers ──────────────────────────────────────────────
 
-function updateStatusBar(count: number) {
+function updateStatusBar(count: number, enabled: boolean = true) {
+    if (!enabled) {
+        statusBarItem.text = '$(circle-slash) LatencyLens (off)';
+        statusBarItem.backgroundColor = undefined;
+        return;
+    }
     if (count === 0) {
         statusBarItem.text = '$(check) LatencyLens';
         statusBarItem.backgroundColor = undefined;
