@@ -29,6 +29,7 @@ export interface Pattern {
     short_desc: string;
     explanation: string;
     fix_hint: string;
+    speedup_context: string;
     severity: 'high' | 'medium' | 'low';
     before_label: string;
     after_label: string;
@@ -65,6 +66,7 @@ for (int i = 0; i < N; i++) m[keys[i]] = i;
 auto it = m.find(key);  // O(1) — hash lookup`,
         reference_benchmarks: { before_ns: 98_000_000, after_ns: 32_000_000, speedup: 3.06, data_size: 100_000, note: 'Apple M1, clang++ -O2, integer keys' },
         fix_hint: 'Replace std::map with std::unordered_map and add .reserve(N) if you know the size. Only keep std::map if you need sorted iteration.',
+        speedup_context: 'At 100K lookups, you saved ~66ms per batch. In a trading system processing market data, that is the difference between seeing the price and missing the fill.',
         references: [
             { title: 'std::unordered_map', url: 'https://en.cppreference.com/w/cpp/container/unordered_map' },
             { title: 'std::map', url: 'https://en.cppreference.com/w/cpp/container/map' },
@@ -151,6 +153,7 @@ for (auto& val : data) sum += val;
 // L1 cache hits ~95% of the time`,
         reference_benchmarks: { before_ns: 45_000_000, after_ns: 3_200_000, speedup: 14.06, data_size: 1_000_000, note: 'Apple M1, clang++ -O2, int iteration' },
         fix_hint: 'Replace std::list with std::vector unless you need stable iterators during mid-sequence insertion. Even frequent insertions in the middle are often faster with vector due to cache locality.',
+        speedup_context: 'A 14x speedup on iteration. Over 1M elements, the vector finishes while the list is still chasing pointers through scattered heap memory. This is what cache locality looks like in practice.',
         references: [
             { title: 'std::vector', url: 'https://en.cppreference.com/w/cpp/container/vector' },
             { title: 'std::list', url: 'https://en.cppreference.com/w/cpp/container/list' },
@@ -222,6 +225,7 @@ for (int i = 0; i < N; i++)
 // Zero reallocations, zero copies`,
         reference_benchmarks: { before_ns: 52_000_000, after_ns: 38_000_000, speedup: 1.37, data_size: 5_000_000, note: 'Apple M1, clang++ -O2' },
         fix_hint: 'Call v.reserve(N) before the loop if you know or can estimate the final size. For exact sizes, consider resize() + direct index assignment instead of push_back.',
+        speedup_context: 'One line of code eliminated ~20 hidden reallocation-and-copy cycles. For a 5M element vector, that is 23 full copies of the data you never needed to make.',
         references: [
             { title: 'std::vector::reserve', url: 'https://en.cppreference.com/w/cpp/container/vector/reserve' },
             { title: 'std::vector::capacity', url: 'https://en.cppreference.com/w/cpp/container/vector/capacity' },
@@ -294,6 +298,7 @@ for (auto& s : shapes) total += s.area();
 // Zero indirection, fully inlined, auto-vectorizable`,
         reference_benchmarks: { before_ns: 68_000_000, after_ns: 22_000_000, speedup: 3.09, data_size: 10_000_000, note: 'Apple M1, clang++ -O2' },
         fix_hint: 'Use CRTP when you have a fixed set of derived types known at compile time. Keep virtual dispatch for plugin-style extensibility where types are loaded at runtime.',
+        speedup_context: 'Each virtual call burns two pointer dereferences and kills inlining. Over 10M calls, switching to CRTP saved 46ms. The compiler literally computed the answer at compile time instead of chasing vtable pointers.',
         references: [
             { title: 'virtual function specifier', url: 'https://en.cppreference.com/w/cpp/language/virtual' },
             { title: 'CRTP (Curiously Recurring Template Pattern)', url: 'https://en.cppreference.com/w/cpp/language/crtp' },
@@ -377,6 +382,7 @@ int main() {
 // Only position+velocity data enters cache — SIMD friendly`,
         reference_benchmarks: { before_ns: 18_000_000, after_ns: 5_500_000, speedup: 3.27, data_size: 2_000_000, note: 'Apple M1, clang++ -O2, position update' },
         fix_hint: 'Restructure your struct so each field is a separate contiguous array. Group fields that are accessed together. This is the core of Data-Oriented Design.',
+        speedup_context: 'You loaded 32 bytes of struct data per cache line but only needed 12. SoA means every byte in the cache line is useful. Multiply this by 2M particles and you just reclaimed 40MB of wasted memory bandwidth.',
         references: [
             { title: 'alignas specifier', url: 'https://en.cppreference.com/w/cpp/language/alignas' },
         ],
@@ -456,7 +462,8 @@ int main() {
 }
 // Zero mispredictions, constant-time execution`,
         reference_benchmarks: { before_ns: 32_000_000, after_ns: 12_000_000, speedup: 2.67, data_size: 10_000_000, note: 'Apple M1, clang++ -O2, random data' },
-        fix_hint: 'Convert conditional accumulation to arithmetic: use (-(condition)) as a mask, or multiply by the boolean. Works best when branch is unpredictable (~50/50). Sorted data has good prediction — don\'t optimize what\'s already fast.',
+        fix_hint: 'Convert conditional accumulation to arithmetic: use (-(condition)) as a mask, or multiply by the boolean. Works best when branch is unpredictable (~50/50). Sorted data has good prediction -- don\'t optimize what\'s already fast.',
+        speedup_context: 'Each mispredicted branch flushes the CPU pipeline: 10-20 cycles wasted per miss. On 10M random elements with ~50% misprediction, thats roughly 50 million wasted cycles. Branchless code runs at a constant speed regardless of data.',
         references: [
             { title: 'Branch prediction', url: 'https://en.wikipedia.org/wiki/Branch_predictor' },
         ],
@@ -527,6 +534,7 @@ ptrs.push_back(std::move(p));
 // Compiler optimizes completely away`,
         reference_benchmarks: { before_ns: 180_000_000, after_ns: 95_000_000, speedup: 1.89, data_size: 5_000_000, note: 'Apple M1, clang++ -O2' },
         fix_hint: 'Default to std::unique_ptr for single ownership. Only use shared_ptr when ownership is genuinely shared across multiple owners with different lifetimes. Consider passing raw pointers/references for non-owning access.',
+        speedup_context: 'Every shared_ptr copy/destroy is an atomic operation with a memory fence. Over 5M objects, you paid for 10M unnecessary atomic increments/decrements. unique_ptr compiles down to the same code as a raw pointer.',
         references: [
             { title: 'std::unique_ptr', url: 'https://en.cppreference.com/w/cpp/memory/unique_ptr' },
             { title: 'std::shared_ptr', url: 'https://en.cppreference.com/w/cpp/memory/shared_ptr' },
@@ -602,6 +610,7 @@ struct Counters {
 // Each core owns its cache line — no bouncing`,
         reference_benchmarks: { before_ns: 650_000_000, after_ns: 190_000_000, speedup: 3.42, data_size: 50_000_000, note: 'Apple M1, clang++ -O2, 2 threads' },
         fix_hint: 'Pad each thread-local variable to a full cache line with alignas(64) or std::hardware_destructive_interference_size. Group per-thread data in its own struct aligned to 64 bytes.',
+        speedup_context: 'Two threads wrote to the same 64-byte cache line, forcing the MESI protocol to bounce it between cores on every write. Adding 56 bytes of padding gave a 3.4x speedup. Sometimes the cheapest optimization is wasting a little memory.',
         references: [
             { title: 'std::hardware_destructive_interference_size', url: 'https://en.cppreference.com/w/cpp/thread/hardware_destructive_interference_size' },
             { title: 'alignas specifier', url: 'https://en.cppreference.com/w/cpp/language/alignas' },
@@ -680,7 +689,8 @@ int main() {
     for (auto& v : data) total += v;
 }`,
         reference_benchmarks: { before_ns: 55_000_000, after_ns: 8_000_000, speedup: 6.88, data_size: 5_000_000, note: 'Apple M1, clang++ -O2, vector<double>' },
-        fix_hint: 'Add const& to function parameters for any type larger than a pointer (8 bytes). Strings, vectors, maps — always pass by const reference unless you need a copy inside the function.',
+        fix_hint: 'Add const& to function parameters for any type larger than a pointer (8 bytes). Strings, vectors, maps -- always pass by const reference unless you need a copy inside the function.',
+        speedup_context: 'Each call copied 5M doubles: 40MB memcpy just to read the data. Adding one ampersand to the signature reduced that to passing an 8-byte pointer. Over 10 calls thats 400MB of unnecessary copies eliminated.',
         references: [
             { title: 'Reference declaration', url: 'https://en.cppreference.com/w/cpp/language/reference' },
             { title: 'const type qualifier', url: 'https://en.cppreference.com/w/cpp/language/cv' },
@@ -752,6 +762,7 @@ int main() {
 }`,
         reference_benchmarks: { before_ns: 120_000_000, after_ns: 8_000_000, speedup: 15.0, data_size: 10_000_000, note: 'Apple M1, clang++ -O2, runtime exponent' },
         fix_hint: 'Replace pow(x, 2) with x*x, pow(x, 3) with x*x*x, and pow(x, 0.5) with std::sqrt(x). The compiler cannot do this for you due to IEEE 754 floating-point semantics.',
+        speedup_context: '15x faster. std::pow internally computes exp(2 * log(x)) using Taylor series. You replaced that with a single multiply instruction. Per element thats ~45 cycles saved, and the compiler still cannot make this optimization for you.',
         references: [
             { title: 'std::pow', url: 'https://en.cppreference.com/w/cpp/numeric/math/pow' },
             { title: 'std::sqrt', url: 'https://en.cppreference.com/w/cpp/numeric/math/sqrt' },
@@ -830,6 +841,7 @@ int main(int argc, char** argv) {
 }`,
         reference_benchmarks: { before_ns: 42_000_000, after_ns: 8_500_000, speedup: 4.94, data_size: 100_000, note: 'Apple M1, clang++ -O2, ostringstream' },
         fix_hint: 'Replace std::endl with \'\\n\' everywhere unless you explicitly need to flush (e.g., before user input). Use std::flush only when you actually need immediate output.',
+        speedup_context: 'Each endl triggers a syscall to flush the output buffer. Over 100K lines thats 100K unnecessary system calls. The OS already flushes when the buffer fills, when the program exits, or when you explicitly ask.',
         references: [
             { title: 'std::endl', url: 'https://en.cppreference.com/w/cpp/io/manip/endl' },
             { title: 'std::flush', url: 'https://en.cppreference.com/w/cpp/io/manip/flush' },
@@ -898,7 +910,8 @@ for (int i = 0; i < n; i++) {
 }
 // Compiler knows n is fixed — can optimize freely`,
         reference_benchmarks: { before_ns: 95_000_000, after_ns: 92_000_000, speedup: 1.03, data_size: 10_000_000, note: 'Apple M1, clang++ -O2, opaque function body' },
-        fix_hint: 'Store .size() in a local const variable before the loop. This also makes the code clearer — the reader knows the container size won\'t change during iteration.',
+        fix_hint: 'Store .size() in a local const variable before the loop. This also makes the code clearer -- the reader knows the container size won\'t change during iteration.',
+        speedup_context: 'Modest gain here, but it signals intent: the compiler now knows the trip count is fixed and can unroll the loop. More importantly, it tells the reader the container is not being resized during iteration.',
         references: [
             { title: 'Range-based for loop', url: 'https://en.cppreference.com/w/cpp/language/range-for' },
         ],
@@ -970,7 +983,8 @@ int main() {
 // Zero allocations — just pointer + length
 // Works with string, string_view, and char*`,
         reference_benchmarks: { before_ns: 85_000_000, after_ns: 12_000_000, speedup: 7.08, data_size: 2_000_000, note: 'Apple M1, clang++ -O2, random strings' },
-        fix_hint: 'Replace const std::string& parameters with std::string_view when the function only reads the string. Note: string_view does not own the data — don\'t store it beyond the function scope.',
+        fix_hint: 'Replace const std::string& parameters with std::string_view when the function only reads the string. Note: string_view does not own the data -- do not store it beyond the function scope.',
+        speedup_context: '7x faster. Each std::string copy triggers a heap allocation (malloc + memcpy). string_view is 16 bytes on the stack: a pointer and a length. Over 2M calls thats 2M heap allocations you skipped entirely.',
         references: [
             { title: 'std::string_view', url: 'https://en.cppreference.com/w/cpp/string/basic_string_view' },
             { title: 'std::string', url: 'https://en.cppreference.com/w/cpp/string/basic_string' },
@@ -1050,6 +1064,7 @@ consume(std::move(tmp));  // Steals buffer — O(1)
 results.push_back(std::move(local_vec));`,
         reference_benchmarks: { before_ns: 65_000_000, after_ns: 3_000_000, speedup: 21.67, data_size: 1_000_000, note: 'Apple M1, clang++ -O2, vector<int>' },
         fix_hint: 'Use std::move() when passing or assigning a local variable that you won\'t read from again. Common spots: push_back, function arguments, return values, and container construction.',
+        speedup_context: '21x faster. Without move, each push_back copies the entire inner vector: O(n) per insert. With move, it steals the heap pointer in O(1). That is the difference between n-squared total work and linear total work.',
         references: [
             { title: 'std::move', url: 'https://en.cppreference.com/w/cpp/utility/move' },
             { title: 'Move constructors', url: 'https://en.cppreference.com/w/cpp/language/move_constructor' },
@@ -1123,6 +1138,7 @@ v.emplace_back("hello", 42);
 // Zero temporaries`,
         reference_benchmarks: { before_ns: 140_000_000, after_ns: 95_000_000, speedup: 1.47, data_size: 2_000_000, note: 'Apple M1, clang++ -O2, pair<string,int>' },
         fix_hint: 'Replace push_back(Type(...)) with emplace_back(...). Pass constructor arguments directly. Most helpful for types with expensive constructors (strings, containers, etc).',
+        speedup_context: 'emplace_back constructs the object directly in the vector memory. push_back creates a temporary, then moves it. For types with expensive constructors (strings, pairs), this avoids one temporary object per insert.',
         references: [
             { title: 'std::vector::emplace_back', url: 'https://en.cppreference.com/w/cpp/container/vector/emplace_back' },
             { title: 'std::vector::push_back', url: 'https://en.cppreference.com/w/cpp/container/vector/push_back' },
@@ -1196,6 +1212,7 @@ constexpr int val = factorial(12);  // Computed at COMPILE time
 // val is literally the number 479001600 in the binary`,
         reference_benchmarks: { before_ns: 25_000_000, after_ns: 50_000, speedup: 500.0, data_size: 10_000_000, note: 'Apple M1, clang++ -O2, lookup table init' },
         fix_hint: 'Mark functions constexpr when they: (1) only use constexpr-compatible operations, (2) are called with compile-time-known arguments. Same for variables initialized from constants.',
+        speedup_context: '500x faster is not an exaggeration. The compiler literally computed the answer during compilation and baked it into the binary as a constant. Zero instructions executed at runtime. This is free performance.',
         references: [
             { title: 'constexpr specifier', url: 'https://en.cppreference.com/w/cpp/language/constexpr' },
             { title: 'consteval (C++20)', url: 'https://en.cppreference.com/w/cpp/language/consteval' },
@@ -1279,7 +1296,8 @@ int main() {
 // No exception tables, fully vectorizable
 // std::optional has zero overhead`,
         reference_benchmarks: { before_ns: 48_000_000, after_ns: 15_000_000, speedup: 3.2, data_size: 5_000_000, note: 'Apple M1, clang++ -O2, no throws' },
-        fix_hint: 'Move try/catch outside hot loops, or replace with error codes / std::optional / std::expected (C++23). Exceptions are fine for rare errors — just not in inner loops.',
+        fix_hint: 'Move try/catch outside hot loops, or replace with error codes / std::optional / std::expected (C++23). Exceptions are fine for rare errors, just not in inner loops.',
+        speedup_context: 'Even when no exceptions are thrown, try/catch in a loop prevents the compiler from vectorizing or reordering instructions across the try boundary. Lifting it out let the optimizer see the full loop.',
         references: [
             { title: 'std::optional', url: 'https://en.cppreference.com/w/cpp/utility/optional' },
             { title: 'std::expected (C++23)', url: 'https://en.cppreference.com/w/cpp/utility/expected' },
@@ -1356,7 +1374,8 @@ for (int x : data) {
 // Branch pattern: NNNN...YYYY — perfect prediction
 // Near-zero mispredictions after warmup`,
         reference_benchmarks: { before_ns: 38_000_000, after_ns: 14_000_000, speedup: 2.71, data_size: 10_000_000, note: 'Apple M1, clang++ -O2, int filter' },
-        fix_hint: 'If you\'re filtering data with an if-statement, consider sorting it first. The sort cost is often paid back by perfect branch prediction. Profile to verify on your data size.',
+        fix_hint: 'If you are filtering data with an if-statement, consider sorting it first. The sort cost is often paid back by perfect branch prediction. Profile to verify on your data size.',
+        speedup_context: 'After sorting, the branch pattern becomes NNNN...YYYY. The predictor learns this instantly and hits near-100% accuracy. On unsorted random data its a coin flip on every iteration.',
         references: [
             { title: 'std::sort', url: 'https://en.cppreference.com/w/cpp/algorithm/sort' },
         ],
@@ -1435,6 +1454,7 @@ for (auto& s : shapes) {
 // Jump table: ~2-5ns`,
         reference_benchmarks: { before_ns: 180_000_000, after_ns: 28_000_000, speedup: 6.43, data_size: 5_000_000, note: 'Apple M1, clang++ -O2' },
         fix_hint: 'Replace dynamic_cast chains with std::variant + std::visit when the set of types is known at compile time. For open type sets, use a virtual method or type tag enum instead.',
+        speedup_context: '6.4x faster. dynamic_cast walks the type hierarchy comparing type_info strings. std::variant dispatch is a jump table indexed by a small integer. Over 5M objects, you eliminated millions of RTTI string comparisons.',
         references: [
             { title: 'dynamic_cast', url: 'https://en.cppreference.com/w/cpp/language/dynamic_cast' },
             { title: 'std::variant', url: 'https://en.cppreference.com/w/cpp/utility/variant' },
@@ -1524,6 +1544,7 @@ int main() {
 }`,
         reference_benchmarks: { before_ns: 320_000_000, after_ns: 48_000_000, speedup: 6.67, data_size: 1_000_000, note: 'Apple M1, clang++ -O2, integer reads' },
         fix_hint: 'Add std::ios_base::sync_with_stdio(false) and std::cin.tie(nullptr) at the start of main(). Only safe if you NEVER mix cout/cin with printf/scanf in the same program.',
+        speedup_context: '6.7x faster I/O with two lines of code. The default sync acquires a mutex on every single read/write to coordinate with C stdio. If you only use C++ streams, that lock is pure waste.',
         references: [
             { title: 'std::ios_base::sync_with_stdio', url: 'https://en.cppreference.com/w/cpp/io/ios_base/sync_with_stdio' },
             { title: 'std::basic_ios::tie', url: 'https://en.cppreference.com/w/cpp/io/basic_ios/tie' },
