@@ -8,7 +8,8 @@ set(CMAKE_DEPENDS_LANGUAGES
 
 # The set of dependency files which are needed:
 set(CMAKE_DEPENDS_DEPENDENCY_FILES
-  "/Users/diarshakimov/Downloads/opti/engine/ll_asmdiff.cpp" "CMakeFiles/ll_asmdiff.dir/ll_asmdiff.cpp.o" "gcc" "CMakeFiles/ll_asmdiff.dir/ll_asmdiff.cpp.o.d"
+  "/home/runner/work/latenC/latenC/engine/ll_asmdiff.cpp" "CMakeFiles/ll_asmdiff.dir/ll_asmdiff.cpp.o" "gcc" "CMakeFiles/ll_asmdiff.dir/ll_asmdiff.cpp.o.d"
+  "" "ll_asmdiff" "gcc" "CMakeFiles/ll_asmdiff.dir/link.d"
   )
 
 # Targets to which this target links which contain Fortran sources.
