@@ -1,0 +1,1 @@
+/tmp/codeql-scratch-0e14b31cd10135b0/dbs/cpp/working/autobuild/bin/c++ -O2 -DNDEBUG -Wl,--dependency-file=CMakeFiles/ll_bench_runner.dir/link.d CMakeFiles/ll_bench_runner.dir/ll_bench_runner.cpp.o -o ll_bench_runner
