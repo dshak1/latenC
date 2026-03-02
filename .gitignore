@@ -6,3 +6,6 @@ out/
 *.log
 .DS_Store
 .env
+engine/build/
+engine/_codeql_build_dir/
+_codeql_detected_source_root

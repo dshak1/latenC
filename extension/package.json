@@ -2,7 +2,7 @@
   "name": "latencylens",
   "displayName": "LatencyLens — C++ Performance Observatory",
   "description": "Detect C++ performance anti-patterns with AST analysis, see explanations, and run real compiled benchmarks — all inside VS Code. Zero external dependencies.",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "publisher": "latencylens",
   "engines": {
     "vscode": "^1.85.0"
