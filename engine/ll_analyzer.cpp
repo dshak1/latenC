@@ -20,12 +20,12 @@
 #include <fstream>
 #include <iostream>
 #include <optional>
-#include <regex>
 #include <sstream>
 #include <string>
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
+#include <variant>
 #include <vector>
 
 // ── Token Types ──────────────────────────────────────────────────────
@@ -54,7 +54,7 @@ struct Token {
 
 class Tokenizer {
 public:
-    explicit Tokenizer(const std::string& source)
+    explicit Tokenizer(std::string_view source)
         : src_(source), pos_(0), line_(1), col_(1) {}
 
     std::vector<Token> tokenize() {
@@ -70,7 +70,7 @@ public:
     }
 
 private:
-    std::string src_;
+    std::string_view src_;
     size_t pos_;
     int line_, col_;
 
@@ -319,23 +319,13 @@ struct Finding {
     std::vector<Match> matches;
 };
 
-// --- Detector base ---
-class PatternDetector {
-public:
-    virtual ~PatternDetector() = default;
-    virtual std::optional<Finding> detect(
-        const std::vector<Token>& tokens,
-        const std::vector<std::string>& lines
-    ) = 0;
-};
-
 // --- std::map → unordered_map ---
-class MapDetector : public PatternDetector {
+class MapDetector {
 public:
     std::optional<Finding> detect(
         const std::vector<Token>& tokens,
         const std::vector<std::string>& lines
-    ) override {
+    ) {
         Finding f;
         f.pattern_id   = "map_vs_unordered";
         f.pattern_name = "std::map → std::unordered_map";
@@ -379,12 +369,12 @@ public:
 };
 
 // --- push_back without reserve ---
-class ReserveDetector : public PatternDetector {
+class ReserveDetector {
 public:
     std::optional<Finding> detect(
         const std::vector<Token>& tokens,
         const std::vector<std::string>& lines
-    ) override {
+    ) {
         Finding f;
         f.pattern_id   = "reserve_pattern";
         f.pattern_name = "push_back → reserve + push_back";
@@ -397,26 +387,52 @@ public:
         f.before_snippet = "std::vector<int> v;\nfor (...) v.push_back(x); // multiple reallocs";
         f.after_snippet  = "std::vector<int> v;\nv.reserve(n);\nfor (...) v.push_back(x); // single alloc";
 
-        // Find push_back calls — check if there's a reserve nearby
-        bool has_reserve = false;
-        for (auto& t : tokens) {
-            if (t.kind == TokenKind::Identifier && t.text == "reserve") {
-                has_reserve = true;
-                break;
+        // Per-scope tracking: assign each token a unique scope instance ID so that
+        // a reserve() in one function does not suppress warnings in a different function.
+        // Scope 0 is the global/file scope; each '{' opens a new child scope.
+        int next_scope_id = 0;
+        std::vector<int> token_scope(tokens.size(), 0);
+        std::unordered_map<int, int> scope_parent; // scope_id -> parent scope_id
+        std::vector<int> scope_stack;
+        scope_stack.push_back(0); // global scope
+
+        for (size_t i = 0; i < tokens.size(); ++i) {
+            token_scope[i] = scope_stack.back();
+            if (tokens[i].text == "{") {
+                int new_scope = ++next_scope_id;
+                scope_parent[new_scope] = scope_stack.back();
+                scope_stack.push_back(new_scope);
+            } else if (tokens[i].text == "}" && scope_stack.size() > 1) {
+                scope_stack.pop_back();
             }
         }
 
-        // Only flag if there's NO reserve in the same scope
-        for (size_t i = 0; i + 1 < tokens.size(); ++i) {
-            if (tokens[i].kind == TokenKind::Identifier && tokens[i].text == "push_back") {
-                if (!has_reserve) {
-                    f.matches.push_back({tokens[i].line, lines[tokens[i].line - 1]});
-                }
+        // Collect which scope instances contain a reserve() call
+        std::unordered_set<int> scopes_with_reserve;
+        for (size_t i = 0; i < tokens.size(); ++i) {
+            if (tokens[i].kind == TokenKind::Identifier && tokens[i].text == "reserve") {
+                scopes_with_reserve.insert(token_scope[i]);
             }
-            // Also check emplace_back
-            if (tokens[i].kind == TokenKind::Identifier && tokens[i].text == "emplace_back") {
-                if (!has_reserve) {
-                    f.matches.push_back({tokens[i].line, lines[tokens[i].line - 1]});
+        }
+
+        // Check if a scope or any of its ancestors has reserve()
+        auto has_reserve_in_scope = [&](int scope_id) {
+            int s = scope_id;
+            while (true) {
+                if (scopes_with_reserve.count(s)) return true;
+                auto it = scope_parent.find(s);
+                if (it == scope_parent.end()) break;
+                s = it->second;
+            }
+            return false;
+        };
+
+        // Flag push_back / emplace_back only if the enclosing scope has no reserve()
+        for (size_t i = 0; i < tokens.size(); ++i) {
+            if (tokens[i].kind == TokenKind::Identifier &&
+                (tokens[i].text == "push_back" || tokens[i].text == "emplace_back")) {
+                if (!has_reserve_in_scope(token_scope[i])) {
+                    f.matches.push_back({tokens[i].line, lines[static_cast<size_t>(tokens[i].line - 1)]});
                 }
             }
         }
@@ -433,12 +449,12 @@ public:
 };
 
 // --- Pass by value (large types) ---
-class PassByValueDetector : public PatternDetector {
+class PassByValueDetector {
 public:
     std::optional<Finding> detect(
         const std::vector<Token>& tokens,
         const std::vector<std::string>& lines
-    ) override {
+    ) {
         Finding f;
         f.pattern_id   = "pass_by_value";
         f.pattern_name = "Pass by Value → const Reference";
@@ -501,12 +517,12 @@ public:
 };
 
 // --- std::endl → '\n' ---
-class EndlDetector : public PatternDetector {
+class EndlDetector {
 public:
     std::optional<Finding> detect(
         const std::vector<Token>& tokens,
         const std::vector<std::string>& lines
-    ) override {
+    ) {
         Finding f;
         f.pattern_id   = "endl_vs_newline";
         f.pattern_name = "std::endl → '\\n'";
@@ -541,12 +557,12 @@ public:
 };
 
 // --- std::pow(x, 2) → x*x ---
-class PowDetector : public PatternDetector {
+class PowDetector {
 public:
     std::optional<Finding> detect(
         const std::vector<Token>& tokens,
         const std::vector<std::string>& lines
-    ) override {
+    ) {
         Finding f;
         f.pattern_id   = "pow_vs_multiply";
         f.pattern_name = "std::pow(x,2) → x * x";
@@ -576,12 +592,12 @@ public:
 };
 
 // --- shared_ptr → unique_ptr ---
-class SharedPtrDetector : public PatternDetector {
+class SharedPtrDetector {
 public:
     std::optional<Finding> detect(
         const std::vector<Token>& tokens,
         const std::vector<std::string>& lines
-    ) override {
+    ) {
         Finding f;
         f.pattern_id   = "shared_vs_unique";
         f.pattern_name = "shared_ptr → unique_ptr";
@@ -612,12 +628,12 @@ public:
 };
 
 // --- virtual in hot path ---
-class VirtualDetector : public PatternDetector {
+class VirtualDetector {
 public:
     std::optional<Finding> detect(
         const std::vector<Token>& tokens,
         const std::vector<std::string>& lines
-    ) override {
+    ) {
         Finding f;
         f.pattern_id   = "virtual_vs_crtp";
         f.pattern_name = "Virtual Dispatch → CRTP / std::variant";
@@ -647,12 +663,12 @@ public:
 };
 
 // --- .size() in loop condition ---
-class SizeInLoopDetector : public PatternDetector {
+class SizeInLoopDetector {
 public:
     std::optional<Finding> detect(
         const std::vector<Token>& tokens,
         const std::vector<std::string>& lines
-    ) override {
+    ) {
         Finding f;
         f.pattern_id   = "loop_size_hoist";
         f.pattern_name = ".size() in Loop → Hoist to Variable";
@@ -692,12 +708,12 @@ public:
 };
 
 // --- std::list usage ---
-class ListDetector : public PatternDetector {
+class ListDetector {
 public:
     std::optional<Finding> detect(
         const std::vector<Token>& tokens,
         const std::vector<std::string>& lines
-    ) override {
+    ) {
         Finding f;
         f.pattern_id   = "list_vs_vector";
         f.pattern_name = "std::list → std::vector";
@@ -766,6 +782,47 @@ std::string finding_to_json(const Finding& f) {
     return os.str();
 }
 
+// ── JSON Pretty-Printer ─────────────────────────────────────────────
+
+std::string pretty_json(const std::string& json, int indent_width = 2) {
+    std::string out;
+    out.reserve(json.size() * 2);
+    int depth = 0;
+    bool in_string = false;
+
+    auto newline_indent = [&]() {
+        out += '\n';
+        out += std::string(static_cast<size_t>(depth * indent_width), ' ');
+    };
+
+    for (size_t i = 0; i < json.size(); ++i) {
+        char c = json[i];
+        if (in_string) {
+            out += c;
+            if (c == '\\' && i + 1 < json.size()) {
+                out += json[++i]; // consume escaped char
+            } else if (c == '"') {
+                in_string = false;
+            }
+        } else {
+            switch (c) {
+                case '"': in_string = true; out += c; break;
+                case '{': case '[':
+                    out += c; ++depth; newline_indent(); break;
+                case '}': case ']':
+                    --depth; newline_indent(); out += c; break;
+                case ',':
+                    out += c; newline_indent(); break;
+                case ':':
+                    out += ": "; break;
+                default:
+                    out += c; break;
+            }
+        }
+    }
+    return out;
+}
+
 // ── Main ─────────────────────────────────────────────────────────────
 
 int main(int argc, char* argv[]) {
@@ -773,14 +830,16 @@ int main(int argc, char* argv[]) {
     std::string filepath;
     std::string severity_filter;
     bool show_tokens = false;
+    bool pretty = false;
 
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         if (arg == "--file" && i + 1 < argc) { filepath = argv[++i]; }
         else if (arg == "--severity" && i + 1 < argc) { severity_filter = argv[++i]; }
         else if (arg == "--tokens") { show_tokens = true; }
+        else if (arg == "--json-pretty") { pretty = true; }
         else if (arg == "--help" || arg == "-h") {
-            std::cerr << "Usage: ll_analyzer [--file path.cpp] [--severity high|medium|low] [--tokens]\n"
+            std::cerr << "Usage: ll_analyzer [--file path.cpp] [--severity high|medium|low] [--tokens] [--json-pretty]\n"
                       << "  Reads from stdin if no --file given. Outputs JSON findings to stdout.\n";
             return 0;
         }
@@ -817,37 +876,44 @@ int main(int argc, char* argv[]) {
 
     auto lines = split_lines(source);
 
-    // Run all detectors
-    std::vector<std::unique_ptr<PatternDetector>> detectors;
-    detectors.push_back(std::make_unique<MapDetector>());
-    detectors.push_back(std::make_unique<ReserveDetector>());
-    detectors.push_back(std::make_unique<PassByValueDetector>());
-    detectors.push_back(std::make_unique<EndlDetector>());
-    detectors.push_back(std::make_unique<PowDetector>());
-    detectors.push_back(std::make_unique<SharedPtrDetector>());
-    detectors.push_back(std::make_unique<VirtualDetector>());
-    detectors.push_back(std::make_unique<SizeInLoopDetector>());
-    detectors.push_back(std::make_unique<ListDetector>());
+    // Run all detectors — static dispatch via std::variant avoids virtual function overhead.
+    // All 9 detectors are known at compile time, so heap allocation is unnecessary.
+    using AnyDetector = std::variant<
+        MapDetector, ReserveDetector, PassByValueDetector,
+        EndlDetector, PowDetector, SharedPtrDetector,
+        VirtualDetector, SizeInLoopDetector, ListDetector
+    >;
+    std::vector<AnyDetector> detectors = {
+        MapDetector{}, ReserveDetector{}, PassByValueDetector{},
+        EndlDetector{}, PowDetector{}, SharedPtrDetector{},
+        VirtualDetector{}, SizeInLoopDetector{}, ListDetector{}
+    };
 
     std::vector<Finding> findings;
     for (auto& det : detectors) {
-        auto f = det->detect(tokens, lines);
-        if (f) {
-            if (severity_filter.empty() || f->severity == severity_filter) {
-                findings.push_back(std::move(*f));
+        std::visit([&](auto& d) {
+            auto f = d.detect(tokens, lines);
+            if (f) {
+                if (severity_filter.empty() || f->severity == severity_filter) {
+                    findings.push_back(std::move(*f));
+                }
             }
-        }
+        }, det);
     }
 
     // Output JSON
-    std::cout << "{\"findings\":[";
+    std::ostringstream out;
+    out << "{\"findings\":[";
     for (size_t i = 0; i < findings.size(); ++i) {
-        if (i > 0) std::cout << ",";
-        std::cout << finding_to_json(findings[i]);
+        if (i > 0) out << ",";
+        out << finding_to_json(findings[i]);
     }
-    std::cout << "],\"token_count\":" << tokens.size()
-              << ",\"line_count\":" << lines.size()
-              << "}" << std::endl;
+    out << "],\"token_count\":" << tokens.size()
+        << ",\"line_count\":" << lines.size()
+        << "}";
+
+    std::string json = out.str();
+    std::cout << (pretty ? pretty_json(json) : json) << std::endl;
 
     return 0;
 }

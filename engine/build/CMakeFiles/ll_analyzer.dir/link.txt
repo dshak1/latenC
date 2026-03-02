@@ -1,1 +1,0 @@
-/usr/bin/c++ -O2 -DNDEBUG -Wl,--dependency-file=CMakeFiles/ll_analyzer.dir/link.d CMakeFiles/ll_analyzer.dir/ll_analyzer.cpp.o -o ll_analyzer
