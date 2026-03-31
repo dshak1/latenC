@@ -68,12 +68,6 @@ Results are shown in Chart.js-powered charts inside a VS Code Webview panel. The
 
 Each pattern has a detection function, an explanation of the underlying hardware or allocation reason, before and after code snippets, a full self-contained C++ benchmark program, and a reference measurement. The pattern library is structured so adding a new one is just filling in the interface, the detection pipeline and benchmark runner pick it up automatically.
 
-**The FAHH**
-
-When you hit an error, you hear it. A sound effect fires on diagnostic triggers. Some mistakes deserve a reaction.
-
----
-
 ## Challenges
 
 Building the native C++ analyzer required solving the same problems the extension is designed to teach. Writing the scope tracker with brace-depth tracking, making the comment stripper handle block comments and trailing inline comments correctly, getting the reserve-pattern detector to ignore reserve calls that only exist inside comments. I kept running into my own anti-patterns while building the tool that detects them.

@@ -20,8 +20,8 @@ This is not a prototype. It ships as a 500KB `.vsix` with zero external dependen
 2. LatencyLens parses it into an AST using tree-sitter (not regex)
 3. 26 context-aware detectors check for performance anti-patterns
 4. You see inline diagnostics explaining what's slow and why
-5. Click "Benchmark" above any pattern to compile and run a real before/after test
-6. A result panel shows the timing, the fix, and what the numbers mean in practice
+5. Run dynamic analysis above any pattern to compile and compare a real before/after test
+6. An analysis panel combines the static explanation, the fix, and the measured runtime impact
 
 **26 patterns detected across 8 categories:**
 
@@ -51,6 +51,13 @@ When you click "Benchmark" above a detected pattern:
 2. Your local compiler (`g++` or `clang++`) compiles it with `-O2`
 3. The benchmark runs and outputs JSON with nanosecond timing
 4. The result panel shows before/after bars, speedup factor, code diff, and fix guidance
+
+Local benchmark quality controls (new):
+- Runs each benchmark multiple times in separate process invocations (currently 7 samples)
+- Reports the **median** timing instead of a single potentially noisy run
+- Computes a robust variability estimate (MAD/median) and labels confidence
+
+This follows statistically rigorous benchmarking guidance: use multiple independent runs and report stable summary statistics instead of cherry-picked single measurements.
 
 The benchmark does not modify your source code. If no compiler is found, it falls back to reference data measured on Apple M1 with clang++ -O2. Reference results are clearly labeled.
 
