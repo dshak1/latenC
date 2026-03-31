@@ -1,9 +1,9 @@
 {
-  "name": "latencylens",
-  "displayName": "LatencyLens — C++ Performance Observatory",
+  "name": "LatenC",
+  "displayName": "LatenC — Write High Performing C++",
   "description": "Detect C++ performance anti-patterns with AST analysis, see explanations, and run real compiled benchmarks — all inside VS Code. Zero external dependencies.",
   "version": "0.2.0",
-  "publisher": "latencylens",
+  "publisher": "Late",
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -32,46 +32,46 @@
   "contributes": {
     "commands": [
       {
-        "command": "latencylens.openDashboard",
-        "title": "LatencyLens: Open Dashboard",
+        "command": "LatenC.openDashboard",
+        "title": "LatenC: Open Dashboard",
         "icon": "$(zap)"
       },
       {
-        "command": "latencylens.analyzeFile",
-        "title": "LatencyLens: Analyze Current File"
+        "command": "LatenC.analyzeFile",
+        "title": "LatenC: Analyze Current File"
       },
       {
-        "command": "latencylens.benchmarkPattern",
-        "title": "LatencyLens: Benchmark Pattern"
+        "command": "LatenC.benchmarkPattern",
+        "title": "LatenC: Benchmark Pattern"
       },
       {
-        "command": "latencylens.toggle",
-        "title": "LatencyLens: Toggle On/Off"
+        "command": "LatenC.toggle",
+        "title": "LatenC: Toggle On/Off"
       }
     ],
     "menus": {
       "editor/title": [
         {
           "when": "resourceLangId == cpp || resourceLangId == c",
-          "command": "latencylens.openDashboard",
+          "command": "LatenC.openDashboard",
           "group": "navigation"
         }
       ]
     },
     "configuration": {
-      "title": "LatencyLens",
+      "title": "LatenC",
       "properties": {
-        "latencylens.analyzeOnSave": {
+        "LatenC.analyzeOnSave": {
           "type": "boolean",
           "default": true,
           "description": "Automatically analyze C++ files on save"
         },
-        "latencylens.showCodeLens": {
+        "LatenC.showCodeLens": {
           "type": "boolean",
           "default": true,
           "description": "Show benchmark CodeLens above detected patterns"
         },
-        "latencylens.analysisMode": {
+        "LatenC.analysisMode": {
           "type": "string",
           "default": "auto",
           "enum": ["auto", "tree-sitter", "regex"],

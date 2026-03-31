@@ -1,5 +1,5 @@
 /**
- * LatencyLens — VS Code Extension Entry Point
+ * LatenC — VS Code Extension Entry Point
  * 
  * Activates on C/C++ files. Provides:
  * - Diagnostics (squiggly warnings on anti-patterns)
@@ -28,20 +28,20 @@ let lastFindings: Map<string, Finding[]> = new Map();
 let extensionEnabled = true;
 
 export async function activate(context: vscode.ExtensionContext) {
-    console.log('LatencyLens activating...');
+    console.log('LatenC activating...');
 
     // Initialize local analyzer (no server needed!)
     analyzer = new Analyzer(context.extensionPath);
     await analyzer.init();
 
     // Diagnostics collection
-    diagnosticCollection = vscode.languages.createDiagnosticCollection('latencylens');
+    diagnosticCollection = vscode.languages.createDiagnosticCollection('LatenC');
     context.subscriptions.push(diagnosticCollection);
 
     // Status bar
     statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
-    statusBarItem.command = 'latencylens.openDashboard';
-    statusBarItem.tooltip = 'LatencyLens - Click to open dashboard';
+    statusBarItem.command = 'LatenC.openDashboard';
+    statusBarItem.tooltip = 'LatenC - Click to open dashboard';
     context.subscriptions.push(statusBarItem);
     updateStatusBar(0);
     statusBarItem.show();
@@ -58,13 +58,13 @@ export async function activate(context: vscode.ExtensionContext) {
     // ── Commands ─────────────────────────────────────────
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('latencylens.openDashboard', () => {
+        vscode.commands.registerCommand('LatenC.openDashboard', () => {
             DashboardPanel.createOrShow(context, analyzer);
         })
     );
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('latencylens.analyzeFile', async () => {
+        vscode.commands.registerCommand('LatenC.analyzeFile', async () => {
             const editor = vscode.window.activeTextEditor;
             if (!editor) {
                 vscode.window.showWarningMessage('No active editor');
@@ -75,24 +75,24 @@ export async function activate(context: vscode.ExtensionContext) {
     );
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('latencylens.benchmarkPattern', async (patternId: string) => {
+        vscode.commands.registerCommand('LatenC.benchmarkPattern', async (patternId: string) => {
             await runBenchmarkInline(patternId);
         })
     );
 
     // Toggle on/off
     context.subscriptions.push(
-        vscode.commands.registerCommand('latencylens.toggle', () => {
+        vscode.commands.registerCommand('LatenC.toggle', () => {
             extensionEnabled = !extensionEnabled;
             if (!extensionEnabled) {
                 diagnosticCollection.clear();
                 lastFindings.clear();
                 lensChangeEmitter.fire();
                 updateStatusBar(0, false);
-                vscode.window.showInformationMessage('LatencyLens disabled');
+                vscode.window.showInformationMessage('LatenC disabled');
             } else {
                 updateStatusBar(0, true);
-                vscode.window.showInformationMessage('LatencyLens enabled');
+                vscode.window.showInformationMessage('LatenC enabled');
                 const editor = vscode.window.activeTextEditor;
                 if (editor && (editor.document.languageId === 'cpp' || editor.document.languageId === 'c')) {
                     analyzeDocument(editor.document);
@@ -103,7 +103,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
     // ── Auto-analyze ─────────────────────────────────────
 
-    const config = vscode.workspace.getConfiguration('latencylens');
+    const config = vscode.workspace.getConfiguration('LatenC');
 
     // Analyze on open (instant — no server wait needed)
     if (vscode.window.activeTextEditor) {
@@ -144,10 +144,10 @@ export async function activate(context: vscode.ExtensionContext) {
     // Show activation message with mode info
     const compilerInfo = getCompilerInfo();
     const modeMsg = compilerInfo.compiler
-        ? `LatencyLens active - analysis: ${analyzer.getMode()}, benchmarks: local (${compilerInfo.compiler})`
-        : `LatencyLens active - analysis: ${analyzer.getMode()}, benchmarks: reference data`;
+        ? `LatenC active - analysis: ${analyzer.getMode()}, benchmarks: local (${compilerInfo.compiler})`
+        : `LatenC active - analysis: ${analyzer.getMode()}, benchmarks: reference data`;
     console.log(modeMsg);
-    vscode.window.showInformationMessage('LatencyLens active - open a C++ file to detect performance anti-patterns');
+    vscode.window.showInformationMessage('LatenC active - open a C++ file to detect performance anti-patterns');
 }
 
 // ── Analysis ─────────────────────────────────────────────
@@ -184,10 +184,10 @@ async function analyzeDocument(document: vscode.TextDocument) {
                     `${finding.pattern_name}: ${finding.short_desc}`,
                     severity
                 );
-                diag.source = 'LatencyLens';
+                diag.source = 'LatenC';
                 diag.code = {
                     value: finding.pattern_id,
-                    target: vscode.Uri.parse(`https://github.com/latencylens/patterns#${finding.pattern_id}`)
+                    target: vscode.Uri.parse(`https://github.com/LatenC/patterns#${finding.pattern_id}`)
                 };
 
                 // Add detailed message
@@ -209,7 +209,7 @@ async function analyzeDocument(document: vscode.TextDocument) {
 
     } catch (e) {
         // Server might not be ready yet
-        console.error('LatencyLens analysis error:', e);
+        console.error('LatenC analysis error:', e);
     }
 }
 
@@ -285,7 +285,7 @@ class BenchmarkResultPanel {
         }
 
         BenchmarkResultPanel.panel = vscode.window.createWebviewPanel(
-            'latencylens.benchResult',
+            'LatenC.benchResult',
             `${result.pattern_name || 'Benchmark'}`,
             { viewColumn: vscode.ViewColumn.Beside, preserveFocus: true },
             { enableScripts: true, retainContextWhenHidden: false }
@@ -445,7 +445,7 @@ ${fixHint}
 ${refs}
 ${reading}
 
-<div class="footer">LatencyLens - Speedup (up to) - actual results depend on data, compiler, and hardware</div>
+<div class="footer">LatenC - Speedup (up to) - actual results depend on data, compiler, and hardware</div>
 </body></html>`;
     }
 }
@@ -454,15 +454,15 @@ ${reading}
 
 function updateStatusBar(count: number, enabled: boolean = true) {
     if (!enabled) {
-        statusBarItem.text = '$(circle-slash) LatencyLens (off)';
+        statusBarItem.text = '$(circle-slash) LatenC (off)';
         statusBarItem.backgroundColor = undefined;
         return;
     }
     if (count === 0) {
-        statusBarItem.text = '$(check) LatencyLens';
+        statusBarItem.text = '$(check) LatenC';
         statusBarItem.backgroundColor = undefined;
     } else {
-        statusBarItem.text = `$(warning) LatencyLens: ${count} pattern${count > 1 ? 's' : ''}`;
+        statusBarItem.text = `$(warning) LatenC: ${count} pattern${count > 1 ? 's' : ''}`;
         statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
     }
 }
@@ -486,7 +486,7 @@ function playFahhSound(): void {
     try {
         if (!fahhSoundPath) {
             // Resolve from bundled extension media
-            const ext = vscode.extensions.getExtension('dshak.latencylens');
+            const ext = vscode.extensions.getExtension('dshak.LatenC');
             if (ext) {
                 fahhSoundPath = path.join(ext.extensionPath, 'media', 'fahh.mp3');
             } else {
