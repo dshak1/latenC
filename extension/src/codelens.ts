@@ -48,7 +48,7 @@ export class LensProvider implements vscode.CodeLensProvider {
 
                 // Info lens
                 lenses.push(new vscode.CodeLens(range, {
-                    title: `${finding.severity === 'high' ? '🔴' : finding.severity === 'medium' ? '🟡' : '🔵'} ${finding.short_desc}`,
+                    title: `${finding.severity.toUpperCase()}: ${finding.short_desc}`,
                     command: '',
                     tooltip: finding.explanation,
                 }));
