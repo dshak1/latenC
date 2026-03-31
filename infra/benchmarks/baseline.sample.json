@@ -1,0 +1,15 @@
+{
+  "generated_at": "2026-03-31T00:00:00Z",
+  "workloads": {
+    "large_value_scratch_cycle": {
+      "ops_per_sec": 58.4,
+      "p99_ns": 1890,
+      "error_rate_pct": 0.1
+    },
+    "generic_lookup": {
+      "ops_per_sec": 97.2,
+      "p99_ns": 840,
+      "error_rate_pct": 0.05
+    }
+  }
+}

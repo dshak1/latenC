@@ -10,6 +10,7 @@ import * as vscode from 'vscode';
 import { Analyzer } from './analyzer';
 import { PATTERNS, getPatternById, getPatternSummaries } from './patterns';
 import { getCompilerInfo, hasLocalBenchmarks } from './benchmarkRunner';
+import { recommendMap, triageRegression } from './workAdvisor';
 
 export class DashboardPanel {
     public static currentPanel: DashboardPanel | undefined;
@@ -107,6 +108,18 @@ export class DashboardPanel {
                         },
                     });
                     break;
+                case 'adviseWorkload':
+                    this.panel.webview.postMessage({
+                        command: 'advisorResult',
+                        data: recommendMap(msg.profile),
+                    });
+                    break;
+                case 'triageRegression':
+                    this.panel.webview.postMessage({
+                        command: 'triageResult',
+                        data: triageRegression(msg.input),
+                    });
+                    break;
                 case 'openExternal':
                     vscode.env.openExternal(vscode.Uri.parse(msg.url));
                     break;
@@ -145,6 +158,7 @@ ${DASHBOARD_CSS}
     <nav class="tabs">
         <button class="tab active" data-tab="patterns">Pattern Explorer</button>
         <button class="tab" data-tab="analyze">Code Analyzer</button>
+        <button class="tab" data-tab="advisor">AI Work Advisor</button>
     </nav>
 
     <main id="view-patterns" class="view active">
@@ -221,6 +235,43 @@ ${DASHBOARD_CSS}
             </div>
         </div>
     </main>
+
+    <main id="view-advisor" class="view">
+        <div class="advisor-grid">
+            <section class="advisor-card">
+                <h2>AI Work Advisor</h2>
+                <p>Deterministic workload scoring using operation mix, value size, lifetime, and clear frequency.</p>
+                <div class="form-grid">
+                    <label>Insert %<input id="waInsertPct" type="number" min="0" max="100" value="25"></label>
+                    <label>Lookup hit %<input id="waLookupHitPct" type="number" min="0" max="100" value="45"></label>
+                    <label>Lookup miss %<input id="waLookupMissPct" type="number" min="0" max="100" value="15"></label>
+                    <label>Erase %<input id="waErasePct" type="number" min="0" max="100" value="15"></label>
+                    <label>Clear / hour<input id="waClearPerHour" type="number" min="0" value="80"></label>
+                    <label>Avg value bytes<input id="waAvgValueBytes" type="number" min="1" value="512"></label>
+                    <label>Map lifetime (sec)<input id="waLifetimeSec" type="number" min="1" value="45"></label>
+                    <label>Repeated ID rate %<input id="waRepeatedIdPct" type="number" min="0" max="100" value="40"></label>
+                </div>
+                <button class="btn-primary" id="btnRunAdvisor">Run Work Advisor</button>
+                <div id="advisorResult" class="results-area hidden"></div>
+            </section>
+            <section class="advisor-card">
+                <h2>Regression Triage Assistant</h2>
+                <p>Estimate regression severity and likely causes from baseline/current benchmark snapshots.</p>
+                <div class="form-grid">
+                    <label>Map type<input id="rtMapType" value="absl::flat_hash_map"></label>
+                    <label>Baseline ops/s<input id="rtBaselineOps" type="number" min="0" value="98"></label>
+                    <label>Current ops/s<input id="rtCurrentOps" type="number" min="0" value="77"></label>
+                    <label>Baseline p99 ns<input id="rtBaselineP99" type="number" min="0" value="1120"></label>
+                    <label>Current p99 ns<input id="rtCurrentP99" type="number" min="0" value="1540"></label>
+                    <label>Baseline error %<input id="rtBaselineErr" type="number" min="0" value="0.1"></label>
+                    <label>Current error %<input id="rtCurrentErr" type="number" min="0" value="0.3"></label>
+                </div>
+                <button class="btn-secondary" id="btnRunTriage">Run Regression Triage</button>
+                <div id="triageResult" class="results-area hidden"></div>
+            </section>
+        </div>
+    </main>
+
 
     <script>
 ${DASHBOARD_JS}
@@ -338,6 +389,21 @@ textarea:focus { outline: none; border-color: var(--accent-cyan); }
 .finding-card .explanation { font-size: 13px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 12px; }
 .finding-card .bench-btn { background: linear-gradient(135deg, var(--accent-cyan), var(--accent-blue)); color: white; border: none; font-size: 12px; font-weight: 600; padding: 6px 16px; border-radius: var(--radius-sm); cursor: pointer; }
 .finding-card .bench-result { margin-top: 12px; padding: 12px; background: var(--bg-secondary); border-radius: var(--radius-sm); font-family: var(--font-mono); font-size: 13px; }
+
+.advisor-grid { display: grid; grid-template-columns: repeat(2, minmax(320px, 1fr)); gap: 16px; max-width: 1200px; }
+.advisor-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; }
+.advisor-card h2 { font-size: 18px; margin-bottom: 8px; }
+.advisor-card p { font-size: 12px; color: var(--text-secondary); margin-bottom: 12px; }
+.form-grid { display: grid; grid-template-columns: repeat(2, minmax(120px, 1fr)); gap: 10px; margin-bottom: 12px; }
+.form-grid label { font-size: 11px; color: var(--text-secondary); display: flex; flex-direction: column; gap: 4px; }
+.form-grid input { background: var(--bg-code); border: 1px solid var(--border); color: var(--text-primary); border-radius: 6px; padding: 8px; font-family: var(--font-mono); font-size: 12px; }
+.advisor-block { margin-top: 10px; padding: 12px; border-radius: 8px; background: var(--bg-secondary); border: 1px solid var(--border); }
+.advisor-block h4 { font-size: 13px; margin-bottom: 6px; }
+.advisor-block ul { margin-left: 18px; font-size: 12px; color: var(--text-secondary); }
+.severity-pill { display: inline-block; font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 10px; text-transform: uppercase; }
+.severity-pill.low { background: rgba(46,213,115,0.2); color: var(--accent-green); }
+.severity-pill.medium { background: var(--accent-gold-dim); color: var(--accent-gold); }
+.severity-pill.high, .severity-pill.critical { background: var(--accent-red-dim); color: var(--accent-red); }
 @media (max-width: 600px) { .code-comparison { grid-template-columns: 1fr; } .result-cards { grid-template-columns: 1fr; } .patterns-grid { grid-template-columns: 1fr; } }
 .bench-source { margin-bottom: 12px; }
 .badge { display: inline-block; font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 20px; }
@@ -368,6 +434,8 @@ window.addEventListener('message', (event) => {
         case 'benchmarkResult': handleBenchResult(msg.data); break;
         case 'scalingResult': handleScalingResult(msg.data); break;
         case 'analyzeResult': renderFindings(msg.data || []); break;
+        case 'advisorResult': renderAdvisorResult(msg.data); break;
+        case 'triageResult': renderTriageResult(msg.data); break;
         case 'info':
             document.getElementById('chipCompiler').textContent = msg.data.compiler || '—';
             document.getElementById('chipArch').textContent = msg.data.arch || '—';
@@ -439,6 +507,8 @@ function setupEventListeners() {
     document.getElementById('btnRunBenchmark').addEventListener('click', runBenchmark);
     document.getElementById('btnRunScaling').addEventListener('click', runScaling);
     document.getElementById('btnAnalyze').addEventListener('click', analyzeCode);
+    document.getElementById('btnRunAdvisor').addEventListener('click', runAdvisor);
+    document.getElementById('btnRunTriage').addEventListener('click', runTriage);
 }
 
 function runBenchmark() {
@@ -565,6 +635,76 @@ function renderFindings(findings) {
         '<button class="bench-btn" onclick="benchFinding(\\'' + f.pattern_id + '\\',' + i + ')">Run Dynamic Analysis</button>' +
         '<div class="bench-result hidden" id="fr-' + i + '"></div></div>'
     ).join('');
+}
+
+
+function readNum(id) {
+    const el = document.getElementById(id);
+    return parseFloat((el && el.value) ? el.value : '0') || 0;
+}
+
+function readWorkloadProfile() {
+    return {
+        insertPct: readNum('waInsertPct'),
+        lookupHitPct: readNum('waLookupHitPct'),
+        lookupMissPct: readNum('waLookupMissPct'),
+        erasePct: readNum('waErasePct'),
+        clearPerHour: readNum('waClearPerHour'),
+        avgValueBytes: readNum('waAvgValueBytes'),
+        mapLifetimeSeconds: readNum('waLifetimeSec'),
+        repeatedIdRatePct: readNum('waRepeatedIdPct'),
+    };
+}
+
+function runAdvisor() {
+    postMsg('adviseWorkload', { profile: readWorkloadProfile() });
+}
+
+function runTriage() {
+    postMsg('triageRegression', {
+        input: {
+            mapType: document.getElementById('rtMapType').value || 'unknown',
+            baselineOpsPerSec: readNum('rtBaselineOps'),
+            currentOpsPerSec: readNum('rtCurrentOps'),
+            baselineP99Ns: readNum('rtBaselineP99'),
+            currentP99Ns: readNum('rtCurrentP99'),
+            baselineErrorRatePct: readNum('rtBaselineErr'),
+            currentErrorRatePct: readNum('rtCurrentErr'),
+            profile: readWorkloadProfile(),
+        }
+    });
+}
+
+function renderAdvisorResult(data) {
+    const el = document.getElementById('advisorResult');
+    el.classList.remove('hidden');
+    const scores = Object.entries(data.scores || {}).sort((a, b) => b[1] - a[1]);
+    el.innerHTML =
+      '<div class="advisor-block"><h4>Recommendation</h4>' +
+      '<p><strong>' + esc(data.recommendedMap) + '</strong> · confidence <strong>' + esc(data.confidence) + '</strong></p>' +
+      '<p>Total op mix: ' + Number(data.normalized?.totalOpPct || 0).toFixed(1) + '%</p></div>' +
+      '<div class="advisor-block"><h4>Scoreboard</h4><ul>' +
+      scores.map(s => '<li>' + esc(s[0]) + ': ' + s[1] + '</li>').join('') +
+      '</ul></div>' +
+      '<div class="advisor-block"><h4>Rationale</h4><ul>' +
+      (data.rationale || []).map(r => '<li>' + esc(r) + '</li>').join('') +
+      '</ul></div>';
+}
+
+function renderTriageResult(data) {
+    const el = document.getElementById('triageResult');
+    el.classList.remove('hidden');
+    el.innerHTML =
+      '<div class="advisor-block"><h4>Triage Summary</h4>' +
+      '<span class="severity-pill ' + esc(data.severity) + '">' + esc(data.severity) + '</span>' +
+      '<p style="margin-top:8px">' + esc(data.summary) + '</p>' +
+      '<p>Owner: <strong>' + esc(data.recommendedOwner) + '</strong></p></div>' +
+      '<div class="advisor-block"><h4>Likely Causes</h4><ul>' +
+      (data.likelyCauses || []).map(r => '<li>' + esc(r) + '</li>').join('') +
+      '</ul></div>' +
+      '<div class="advisor-block"><h4>Immediate Actions</h4><ul>' +
+      (data.immediateActions || []).map(r => '<li>' + esc(r) + '</li>').join('') +
+      '</ul></div>';
 }
 
 // Store pending finding benchmarks
