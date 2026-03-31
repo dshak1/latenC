@@ -15,6 +15,7 @@ A VS Code extension that detects C++ performance anti-patterns using **tree-sitt
 2. **See inline diagnostics** → Squiggly warnings with explanations of *why* each pattern is slow
 3. **Click ⚡ Benchmark** → Compiles real C++ on your machine (or shows pre-measured reference data)
 4. **Open the Dashboard** → Interactive pattern explorer, code analyzer, scaling charts
+5. **Use AI Work Advisor + Regression Triage** → Deterministic workload scoring and benchmark regression diagnosis
 
 **No simulation. No estimates. Real compiled C++ benchmarks.**
 
@@ -127,6 +128,15 @@ latencylens/
 - **TypeScript** — Extension UI, bridge layer, pattern metadata
 - **Chart.js** — Interactive visualizations in the dashboard
 - **Your CPU** — Where the real work happens
+
+---
+
+## Reliability & Workshop Extensions
+
+- **AI Work Advisor (deterministic):** Recommends map strategy from operation percentages, value size, map lifetime, clear frequency, and repeated-ID rate.
+- **Regression Triage Assistant:** Compares baseline/current throughput, p99 latency, and error rate, then emits severity + likely causes + next actions.
+- **CI Regression Guard:** `.github/workflows/ci.yml` runs extension build + `infra/benchmark_regression_guard.js` threshold checks for benchmark snapshots.
+- **Workshop Assets:** `workshop/WORKSHOP_PLAN.md` and `workshop/SLIDES.md` provide a 3-level educational flow (baseline, optimization, production specialization).
 
 ---
 
