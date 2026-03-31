@@ -344,6 +344,7 @@ textarea:focus { outline: none; border-color: var(--accent-cyan); }
 .badge.local { background: var(--accent-green-dim); color: var(--accent-green); }
 .badge.reference { background: var(--accent-gold-dim); color: var(--accent-gold); }
 .bench-note { display: block; font-size: 11px; color: var(--text-muted); margin-top: 4px; font-style: italic; }
+.bench-error { display: block; margin-top: 8px; color: var(--accent-red); font-size: 12px; }
 `;
 
 const DASHBOARD_JS = `
@@ -453,8 +454,18 @@ function runBenchmark() {
 function handleBenchResult(result) {
     const btn = document.getElementById('btnRunBenchmark');
     btn.disabled = false; btn.textContent = 'Run Dynamic Analysis';
-    if (result.error) { alert(result.error); return; }
+    if (result.error) { renderBenchError(result.error); return; }
     renderBenchResult(result);
+}
+
+function renderBenchError(message) {
+    const resultsArea = document.getElementById('resultsArea');
+    const scalingArea = document.getElementById('scalingArea');
+    const srcEl = document.getElementById('benchSource');
+    resultsArea.classList.remove('hidden');
+    scalingArea.classList.add('hidden');
+    srcEl.classList.remove('hidden');
+    srcEl.innerHTML = '<span class="bench-error">' + esc(message) + '</span>';
 }
 
 function renderBenchResult(result) {
@@ -467,9 +478,9 @@ function renderBenchResult(result) {
     const srcEl = document.getElementById('benchSource');
     srcEl.classList.remove('hidden');
     if (result.source === 'local') {
-        srcEl.innerHTML = '<span class="badge local">🖥️ Live benchmark on your hardware</span>';
+        srcEl.innerHTML = '<span class="badge local">Live benchmark on your hardware</span>';
     } else {
-        srcEl.innerHTML = '<span class="badge reference">📊 Reference data — install clang++/g++ for live benchmarks</span>';
+        srcEl.innerHTML = '<span class="badge reference">Reference data - install clang++/g++ for live benchmarks</span>';
     }
     if (result.note) {
         srcEl.innerHTML += '<span class="bench-note">' + result.note + '</span>';
@@ -504,7 +515,7 @@ function runScaling() {
 function handleScalingResult(data) {
     const btn = document.getElementById('btnRunScaling');
     btn.disabled = false; btn.textContent = 'Scaling Profile';
-    if (data.error) { alert(data.error); return; }
+    if (data.error) { renderBenchError(data.error); return; }
     if (Array.isArray(data)) renderScaling(data);
 }
 
