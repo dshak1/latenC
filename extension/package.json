@@ -41,8 +41,8 @@
         "title": "LatenC: Analyze Current File"
       },
       {
-        "command": "LatenC.benchmarkPattern",
-        "title": "LatenC: Benchmark Pattern"
+        "command": "LatenC.analyzePattern",
+        "title": "LatenC: Analyze Pattern"
       },
       {
         "command": "LatenC.toggle",

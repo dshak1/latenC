@@ -179,8 +179,8 @@ ${DASHBOARD_CSS}
                         <option value="10000000">10M</option>
                     </select>
                 </div>
-                <button class="btn-primary" id="btnRunBenchmark">Run Benchmark</button>
-                <button class="btn-secondary" id="btnRunScaling">Scaling Analysis</button>
+                <button class="btn-primary" id="btnRunBenchmark">Run Dynamic Analysis</button>
+                <button class="btn-secondary" id="btnRunScaling">Scaling Profile</button>
             </div>
             <div class="results-area hidden" id="resultsArea">
                 <div class="bench-source hidden" id="benchSource"></div>
@@ -201,7 +201,7 @@ ${DASHBOARD_CSS}
                 <div class="chart-container"><canvas id="benchChart"></canvas></div>
             </div>
             <div class="scaling-area hidden" id="scalingArea">
-                <h3>Scaling Analysis</h3>
+                <h3>Scaling Profile</h3>
                 <div class="chart-container wide"><canvas id="scalingChart"></canvas></div>
             </div>
         </div>
@@ -211,7 +211,7 @@ ${DASHBOARD_CSS}
         <div class="analyzer-container">
             <div class="analyzer-input">
                 <h2>Paste your C++ code</h2>
-                <p>LatencyLens will scan for performance anti-patterns and let you benchmark the fixes.</p>
+                <p>LatencyLens will scan for structural performance issues and let you attach dynamic evidence to each fix.</p>
                 <textarea id="codeInput" placeholder="// Paste your C++ code here..."></textarea>
                 <button class="btn-primary" id="btnAnalyze">Analyze Code</button>
             </div>
@@ -443,7 +443,7 @@ function setupEventListeners() {
 function runBenchmark() {
     if (!currentPattern) return;
     const btn = document.getElementById('btnRunBenchmark');
-    btn.disabled = true; btn.textContent = 'Running...';
+    btn.disabled = true; btn.textContent = 'Profiling...';
     postMsg('runBenchmark', {
         patternId: currentPattern.id,
         dataSize: parseInt(document.getElementById('benchSize').value)
@@ -452,7 +452,7 @@ function runBenchmark() {
 
 function handleBenchResult(result) {
     const btn = document.getElementById('btnRunBenchmark');
-    btn.disabled = false; btn.textContent = 'Run Benchmark';
+    btn.disabled = false; btn.textContent = 'Run Dynamic Analysis';
     if (result.error) { alert(result.error); return; }
     renderBenchResult(result);
 }
@@ -494,7 +494,7 @@ function renderBenchResult(result) {
 function runScaling() {
     if (!currentPattern) return;
     const btn = document.getElementById('btnRunScaling');
-    btn.disabled = true; btn.textContent = 'Running...';
+    btn.disabled = true; btn.textContent = 'Profiling...';
     postMsg('runScaling', {
         patternId: currentPattern.id,
         sizes: [1000,5000,10000,50000,100000,500000,1000000]
@@ -503,7 +503,7 @@ function runScaling() {
 
 function handleScalingResult(data) {
     const btn = document.getElementById('btnRunScaling');
-    btn.disabled = false; btn.textContent = 'Scaling Analysis';
+    btn.disabled = false; btn.textContent = 'Scaling Profile';
     if (data.error) { alert(data.error); return; }
     if (Array.isArray(data)) renderScaling(data);
 }
@@ -551,7 +551,7 @@ function renderFindings(findings) {
         '<div class="explanation">' + f.explanation + '</div>' +
         '<div class="code-comparison"><div class="code-block before"><div class="code-label"><span class="dot red"></span>' + f.before_label + '</div><pre><code>' + esc(f.before_snippet) + '</code></pre></div>' +
         '<div class="code-block after"><div class="code-label"><span class="dot green"></span>' + f.after_label + '</div><pre><code>' + esc(f.after_snippet) + '</code></pre></div></div>' +
-        '<button class="bench-btn" onclick="benchFinding(\\'' + f.pattern_id + '\\',' + i + ')">Benchmark This</button>' +
+        '<button class="bench-btn" onclick="benchFinding(\\'' + f.pattern_id + '\\',' + i + ')">Run Dynamic Analysis</button>' +
         '<div class="bench-result hidden" id="fr-' + i + '"></div></div>'
     ).join('');
 }
@@ -561,7 +561,7 @@ const findingBenchCallbacks = {};
 
 function benchFinding(pid, idx) {
     const el = document.getElementById('fr-' + idx);
-    el.classList.remove('hidden'); el.innerHTML = '<span style="opacity:0.6">Running benchmark...</span>';
+    el.classList.remove('hidden'); el.innerHTML = '<span style="opacity:0.6">Running dynamic analysis...</span>';
     findingBenchCallbacks[pid] = el;
     postMsg('runBenchmark', { patternId: pid, dataSize: 100000 });
 }

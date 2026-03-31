@@ -71,12 +71,6 @@ No compiler available? It falls back to pre-measured reference data and labels i
 
 ---
 
-### The FAHH
-
-When an error triggers? You hear it. The FAHH sound. Because some mistakes deserve a reaction and silent warnings are too easy to ignore.
-
----
-
 ### How It Is Different From Just Using Copilot
 
 The obvious counter is: why not just ask Copilot to review your C++? You can. But that optimizes for getting the right answer, not for building the mental model. There's a difference between being told a fact and understanding it well enough to catch it yourself the next time.
@@ -142,4 +136,3 @@ The patterns already implemented cover the most common and highest impact cases.
 Next on the list is deeper scaling analysis: showing how a pattern's cost grows with input size using a chart that maps nanoseconds against N, so you can see not just that something is slower but how much worse it gets under load. That is already in the dashboard as a chart component, the dynamic version with live benchmark data is the next iteration.
 
 ---
-

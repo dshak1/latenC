@@ -1,7 +1,7 @@
 /**
  * LatencyLens — CodeLens Provider
  * 
- * Shows "⚡ Run Benchmark" above lines with detected anti-patterns.
+ * Shows analysis actions above lines with detected anti-patterns.
  */
 
 import * as vscode from 'vscode';
@@ -20,7 +20,7 @@ export class LensProvider implements vscode.CodeLensProvider {
     }
 
     provideCodeLenses(document: vscode.TextDocument): vscode.CodeLens[] {
-        const config = vscode.workspace.getConfiguration('latencylens');
+        const config = vscode.workspace.getConfiguration('LatenC');
         if (!config.get<boolean>('showCodeLens', true)) return [];
 
         const docFindings = this.findings.get(document.uri.toString());
@@ -40,10 +40,10 @@ export class LensProvider implements vscode.CodeLensProvider {
 
                 // Benchmark lens
                 lenses.push(new vscode.CodeLens(range, {
-                    title: `Benchmark: ${finding.pattern_name}`,
-                    command: 'latencylens.benchmarkPattern',
+                    title: `Analyze: ${finding.pattern_name}`,
+                    command: 'LatenC.analyzePattern',
                     arguments: [finding.pattern_id],
-                    tooltip: `Run real C++ benchmark for ${finding.pattern_name}\n${finding.short_desc}`,
+                    tooltip: `Open static + dynamic analysis for ${finding.pattern_name}\n${finding.short_desc}`,
                 }));
 
                 // Info lens

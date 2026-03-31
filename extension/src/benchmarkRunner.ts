@@ -7,8 +7,10 @@
  * 2. REFERENCE: Returns pre-measured reference data when no compiler is available.
  *    Clearly labeled as reference data, not live measurements.
  *
- * The key improvement: benchmarks are OPTIONAL, not a prerequisite.
- * The extension works fully (detection + explanations) even without a compiler.
+ * Benchmarking quality note:
+ * Local mode now runs multiple process-level samples and reports robust
+ * median timings + variability. This follows the spirit of statistically
+ * rigorous benchmarking guidance (multiple independent samples, robust stats).
  */
 
 import * as cp from 'child_process';
@@ -27,10 +29,21 @@ export interface BenchmarkResult {
     source: 'local' | 'reference';
     compiler?: string;
     note?: string;
+    sample_count?: number;
+    variability_pct?: number;
+    confidence?: 'high' | 'medium' | 'low';
 }
 
 let cachedCompiler: string | null | undefined = undefined;
 let cachedOptFlags: string[] = [];
+
+const BENCH_SAMPLES = 7;
+
+interface LocalSample {
+    before_ns: number;
+    after_ns: number;
+    data_size?: number;
+}
 
 /**
  * Find a C++ compiler on the system. Cached after first call.
@@ -126,6 +139,31 @@ function execAsync(cmd: string, options: cp.ExecOptions): Promise<string> {
     });
 }
 
+function median(values: number[]): number {
+    if (values.length === 0) { return 0; }
+    const sorted = [...values].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    if (sorted.length % 2 === 0) {
+        return (sorted[mid - 1] + sorted[mid]) / 2;
+    }
+    return sorted[mid];
+}
+
+function variabilityPercent(values: number[]): number {
+    if (values.length < 2) { return 0; }
+    const med = median(values);
+    if (med <= 0) { return 0; }
+    const absDevs = values.map(v => Math.abs(v - med));
+    const mad = median(absDevs);
+    return Math.round((mad / med) * 1000) / 10;
+}
+
+function confidenceFromVariability(variabilityPct: number): 'high' | 'medium' | 'low' {
+    if (variabilityPct <= 3) { return 'high'; }
+    if (variabilityPct <= 8) { return 'medium'; }
+    return 'low';
+}
+
 /**
  * Compile and run a real C++ benchmark locally.
  */
@@ -148,22 +186,38 @@ async function runLocalBenchmark(pattern: Pattern, compiler: string, dataSize?: 
         onProgress?.('compiling');
         await execAsync(cmd.join(' '), { timeout: 30000 });
 
-        // Execute (async)
+        // Execute multiple samples (async)
         onProgress?.('running');
-        const output = await execAsync(binPath, { timeout: 60000 });
+        const runs: LocalSample[] = [];
+        for (let i = 0; i < BENCH_SAMPLES; i++) {
+            const output = await execAsync(binPath, { timeout: 60000 });
+            const data = JSON.parse(output.trim()) as LocalSample;
+            if (typeof data.before_ns !== 'number' || typeof data.after_ns !== 'number') {
+                throw new Error('Benchmark output missing before_ns/after_ns');
+            }
+            runs.push(data);
+        }
 
-        const data = JSON.parse(output.trim());
+        const beforeSamples = runs.map(r => r.before_ns);
+        const afterSamples = runs.map(r => r.after_ns);
+        const beforeMed = median(beforeSamples);
+        const afterMed = median(afterSamples);
+        const variability = Math.max(variabilityPercent(beforeSamples), variabilityPercent(afterSamples));
+        const confidence = confidenceFromVariability(variability);
         onProgress?.('done');
 
         return {
-            before_ns: data.before_ns,
-            after_ns: data.after_ns,
-            speedup: data.after_ns > 0 ? Math.round((data.before_ns / data.after_ns) * 100) / 100 : 0,
-            data_size: data.data_size || dataSize || 100000,
+            before_ns: Math.round(beforeMed),
+            after_ns: Math.round(afterMed),
+            speedup: afterMed > 0 ? Math.round((beforeMed / afterMed) * 100) / 100 : 0,
+            data_size: runs[0]?.data_size || dataSize || 100000,
             pattern_name: pattern.name,
             source: 'local',
-            compiler: compiler,
-            note: `Live benchmark on ${os.arch()}, ${compiler} -O2`,
+            compiler,
+            sample_count: BENCH_SAMPLES,
+            variability_pct: variability,
+            confidence,
+            note: `Live benchmark on ${os.arch()}, ${compiler} -O2 · median of ${BENCH_SAMPLES} runs · variability ${variability.toFixed(1)}% (${confidence} confidence)`,
         };
     } catch (e: any) {
         throw new Error(`Compile/run failed: ${e.message}`);

@@ -13,19 +13,18 @@
  */
 
 import * as vscode from 'vscode';
-import * as fs from 'fs';
-import * as path from 'path';
-import { execFile } from 'child_process';
-import { Analyzer, Finding } from './analyzer';
+import { Analyzer, BenchmarkResult, Finding } from './analyzer';
 import { LensProvider, lensChangeEmitter } from './codelens';
 import { DashboardPanel } from './dashboard';
-import { hasLocalBenchmarks, getCompilerInfo, BenchmarkPhase } from './benchmarkRunner';
+import { getCompilerInfo, BenchmarkPhase } from './benchmarkRunner';
+import { getPatternById, Pattern } from './patterns';
 
 let analyzer: Analyzer;
 let diagnosticCollection: vscode.DiagnosticCollection;
 let statusBarItem: vscode.StatusBarItem;
 let lastFindings: Map<string, Finding[]> = new Map();
 let extensionEnabled = true;
+const DYNAMIC_ANALYSIS_SIZES = [1000, 10_000, 100_000, 1_000_000];
 
 export async function activate(context: vscode.ExtensionContext) {
     console.log('LatenC activating...');
@@ -75,7 +74,7 @@ export async function activate(context: vscode.ExtensionContext) {
     );
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('LatenC.benchmarkPattern', async (patternId: string) => {
+        vscode.commands.registerCommand('LatenC.analyzePattern', async (patternId: string) => {
             await runBenchmarkInline(patternId);
         })
     );
@@ -213,117 +212,158 @@ async function analyzeDocument(document: vscode.TextDocument) {
     }
 }
 
-// ── Benchmark Inline ─────────────────────────────────────
+// ── Pattern Analysis ────────────────────────────────────
+
+interface PatternAnalysisReport {
+    pattern: Pattern | null;
+    primaryResult: BenchmarkResult;
+    scalingResults: BenchmarkResult[];
+    analysisMode: string;
+}
 
 async function runBenchmarkInline(patternId: string) {
     // Phase 1: Status bar progress
     const originalText = statusBarItem.text;
     const originalBg = statusBarItem.backgroundColor;
-    statusBarItem.text = '$(sync~spin) Compiling benchmark...';
+    statusBarItem.text = '$(sync~spin) Running dynamic analysis...';
     statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.prominentBackground');
 
     try {
-        const result = await analyzer.benchmark(patternId, undefined, (phase: BenchmarkPhase) => {
+        const primaryResult = await analyzer.benchmark(patternId, undefined, (phase: BenchmarkPhase) => {
             switch (phase) {
                 case 'compiling':
-                    statusBarItem.text = '$(sync~spin) Compiling benchmark...';
+                    statusBarItem.text = '$(sync~spin) Compiling dynamic analysis...';
                     break;
                 case 'running':
-                    statusBarItem.text = '$(sync~spin) Running benchmark...';
+                    statusBarItem.text = '$(sync~spin) Running dynamic analysis...';
                     break;
                 case 'done':
                     break;
             }
         });
 
-        if (result.error) {
-            playFahhSound();
+        if (primaryResult.error) {
             statusBarItem.text = '$(error) Benchmark failed';
             statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
-            vscode.window.showErrorMessage(`Benchmark failed: ${result.error}`);
+            vscode.window.showErrorMessage(`Analysis failed: ${primaryResult.error}`);
             setTimeout(() => { statusBarItem.text = originalText; statusBarItem.backgroundColor = originalBg; }, 3000);
             return;
         }
 
+        statusBarItem.text = '$(sync~spin) Building scaling profile...';
+        const scalingResults = await analyzer.scalingBenchmark(patternId, DYNAMIC_ANALYSIS_SIZES);
+
         // Phase 2: Show result in status bar
-        const sourceLabel = result.source === 'local' ? 'live' : 'ref';
-        statusBarItem.text = `$(zap) ${result.speedup}x faster (${sourceLabel})`;
+        const sourceLabel = primaryResult.source === 'local' ? 'live' : 'ref';
+        statusBarItem.text = `$(graph) ${primaryResult.speedup}x faster (${sourceLabel})`;
         statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.prominentBackground');
 
-        // Phase 3: Play sound + open chart panel
-        playFahhSound();
-        BenchmarkResultPanel.show(result);
+        // Phase 3: Open the full static + dynamic analysis report
+        AnalysisReportPanel.show({
+            pattern: getPatternById(patternId) || null,
+            primaryResult,
+            scalingResults,
+            analysisMode: analyzer.getMode(),
+        });
 
         // Reset status bar after 8 seconds
         setTimeout(() => { statusBarItem.text = originalText; statusBarItem.backgroundColor = originalBg; }, 8000);
 
     } catch (e: any) {
-        playFahhSound();
-        statusBarItem.text = '$(error) Benchmark failed';
+        statusBarItem.text = '$(error) Analysis failed';
         statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
-        vscode.window.showErrorMessage(`Benchmark error: ${e.message}`);
+        vscode.window.showErrorMessage(`Analysis error: ${e.message}`);
         setTimeout(() => { statusBarItem.text = originalText; statusBarItem.backgroundColor = originalBg; }, 3000);
     }
 }
 
-// ── Benchmark Result Panel ───────────────────────────────
+// ── Analysis Report Panel ────────────────────────────────
 
-import { BenchmarkResult } from './analyzer';
-import { getPatternById, PATTERNS, Pattern } from './patterns';
-
-class BenchmarkResultPanel {
+class AnalysisReportPanel {
     private static panel: vscode.WebviewPanel | undefined;
 
-    static show(result: BenchmarkResult) {
-        const pattern = PATTERNS.find(p => p.name === result.pattern_name) || null;
-        const html = BenchmarkResultPanel.getHtml(result, pattern);
+    static show(report: PatternAnalysisReport) {
+        const html = AnalysisReportPanel.getHtml(report);
 
-        if (BenchmarkResultPanel.panel) {
-            BenchmarkResultPanel.panel.webview.html = html;
-            BenchmarkResultPanel.panel.reveal(vscode.ViewColumn.Beside, true);
+        if (AnalysisReportPanel.panel) {
+            AnalysisReportPanel.panel.webview.html = html;
+            AnalysisReportPanel.panel.reveal(vscode.ViewColumn.Beside, true);
             return;
         }
 
-        BenchmarkResultPanel.panel = vscode.window.createWebviewPanel(
-            'LatenC.benchResult',
-            `${result.pattern_name || 'Benchmark'}`,
+        AnalysisReportPanel.panel = vscode.window.createWebviewPanel(
+            'LatenC.analysisReport',
+            `${report.primaryResult.pattern_name || 'Analysis'} Report`,
             { viewColumn: vscode.ViewColumn.Beside, preserveFocus: true },
             { enableScripts: true, retainContextWhenHidden: false }
         );
 
-        BenchmarkResultPanel.panel.webview.html = html;
-        BenchmarkResultPanel.panel.onDidDispose(() => { BenchmarkResultPanel.panel = undefined; });
+        AnalysisReportPanel.panel.webview.html = html;
+        AnalysisReportPanel.panel.onDidDispose(() => { AnalysisReportPanel.panel = undefined; });
     }
 
     private static esc(s: string): string {
         return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
 
-    private static getHtml(r: BenchmarkResult, p: Pattern | null): string {
+    private static getHtml(report: PatternAnalysisReport): string {
+        const r = report.primaryResult;
+        const p = report.pattern;
+        const validScaling = report.scalingResults.filter(result => !result.error);
+        const speedups = validScaling.map(result => result.speedup).filter(speedup => Number.isFinite(speedup) && speedup > 0);
         const beforeMs = (r.before_ns / 1e6).toFixed(2);
         const afterMs = (r.after_ns / 1e6).toFixed(2);
-        const pct = Math.round((1 - r.after_ns / r.before_ns) * 100);
-        const barW = Math.max(5, Math.round((r.after_ns / r.before_ns) * 100));
-        const name = r.pattern_name || 'Benchmark';
+        const pct = r.before_ns > 0 ? Math.round((1 - r.after_ns / r.before_ns) * 100) : 0;
+        const barW = r.before_ns > 0 ? Math.max(5, Math.round((r.after_ns / r.before_ns) * 100)) : 100;
+        const name = r.pattern_name || 'Pattern Analysis';
         const beforeLabel = p?.before_label || 'Before';
         const afterLabel = p?.after_label || 'After';
         const sourceBadge = r.source === 'local'
             ? '<span class="badge badge-live">LIVE</span>'
             : '<span class="badge badge-ref">REF</span>';
-        const note = r.note ? `<span class="note">${BenchmarkResultPanel.esc(r.note)}</span>` : '';
+        const confidenceNote = (r.sample_count && r.variability_pct !== undefined && r.confidence)
+            ? `Samples: ${r.sample_count}, variability: ${r.variability_pct.toFixed(1)}%, confidence: ${r.confidence}`
+            : '';
+        const mergedNote = [r.note, confidenceNote].filter(Boolean).join(' · ');
+        const note = mergedNote ? `<span class="note">${AnalysisReportPanel.esc(mergedNote)}</span>` : '';
+        const staticMeta = [
+            `Static engine: ${report.analysisMode}`,
+            p ? `Severity: ${p.severity}` : '',
+            p ? `Category: ${p.category}` : '',
+        ].filter(Boolean);
+        const dynamicMethod = r.source === 'local'
+            ? 'Dynamic analysis compiled and ran the before/after benchmark locally on this machine, then built a small scaling profile across increasing input sizes.'
+            : 'Dynamic analysis is using curated reference measurements because no local compiler was available. The static analysis remains local.';
+        const scalingSummary = speedups.length > 0
+            ? [
+                describeSpeedupTrend(speedups),
+                describeSpeedupConsistency(speedups),
+            ]
+            : ['No scaling points were available for this pattern.'];
+        const scalingRows = validScaling.length > 0
+            ? validScaling.map(result => `
+                <tr>
+                    <td>${result.data_size.toLocaleString()}</td>
+                    <td>${AnalysisReportPanel.esc(formatNs(result.before_ns))}</td>
+                    <td>${AnalysisReportPanel.esc(formatNs(result.after_ns))}</td>
+                    <td>${result.speedup}×</td>
+                    <td>${AnalysisReportPanel.esc(result.source)}</td>
+                </tr>
+            `).join('')
+            : '<tr><td colspan="5">No dynamic scaling data available.</td></tr>';
 
-        const beforeCode = p ? BenchmarkResultPanel.esc(p.before_snippet) : '';
-        const afterCode = p ? BenchmarkResultPanel.esc(p.after_snippet) : '';
-        const fixHint = p?.fix_hint ? `<section class="section"><h2>How to Fix</h2><p class="fix-text">${BenchmarkResultPanel.esc(p.fix_hint)}</p></section>` : '';
-        const speedupCtx = p?.speedup_context ? `<section class="section"><h2>What This Means</h2><p class="context-text">${BenchmarkResultPanel.esc(p.speedup_context)}</p></section>` : '';
+        const beforeCode = p ? AnalysisReportPanel.esc(p.before_snippet) : '';
+        const afterCode = p ? AnalysisReportPanel.esc(p.after_snippet) : '';
+        const fixHint = p?.fix_hint ? `<section class="section"><h2>How to Fix</h2><p class="fix-text">${AnalysisReportPanel.esc(p.fix_hint)}</p></section>` : '';
+        const speedupCtx = p?.speedup_context ? `<section class="section"><h2>Why It Matters</h2><p class="context-text">${AnalysisReportPanel.esc(p.speedup_context)}</p></section>` : '';
         const refs = p?.references?.length
-            ? `<section class="section"><h2>C++ Reference</h2><ul class="link-list">${p.references.map(l => `<li><a href="${l.url}">${BenchmarkResultPanel.esc(l.title)}</a></li>`).join('')}</ul></section>`
+            ? `<section class="section"><h2>C++ Reference</h2><ul class="link-list">${p.references.map(l => `<li><a href="${l.url}">${AnalysisReportPanel.esc(l.title)}</a></li>`).join('')}</ul></section>`
             : '';
         const reading = p?.further_reading?.length
-            ? `<section class="section"><h2>Further Reading</h2><ul class="link-list">${p.further_reading.map(l => `<li><a href="${l.url}">${BenchmarkResultPanel.esc(l.title)}</a></li>`).join('')}</ul></section>`
+            ? `<section class="section"><h2>Further Reading</h2><ul class="link-list">${p.further_reading.map(l => `<li><a href="${l.url}">${AnalysisReportPanel.esc(l.title)}</a></li>`).join('')}</ul></section>`
             : '';
         const explanation = p?.explanation
-            ? `<p class="explanation">${BenchmarkResultPanel.esc(p.explanation)}</p>`
+            ? `<p class="explanation">${AnalysisReportPanel.esc(p.explanation)}</p>`
             : '';
 
         return /*html*/`<!DOCTYPE html>
@@ -355,6 +395,8 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); padd
 .badge-live { background: rgba(152,195,121,0.15); color: var(--green); }
 .badge-ref { background: rgba(229,192,123,0.15); color: var(--gold); }
 .category { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.meta-row { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.meta-chip { background: var(--card); border: 1px solid var(--border); color: var(--text); border-radius: 999px; padding: 4px 10px; font-size: 11px; font-family: var(--mono); }
 
 /* ── Timing bar ── */
 .timing { background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 16px; margin-bottom: 16px; }
@@ -392,6 +434,13 @@ pre.code .comment { color: var(--muted); }
 .section h2 { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-bottom: 8px; }
 .fix-text { font-size: 12.5px; line-height: 1.6; padding: 10px 12px; background: var(--card); border: 1px solid var(--border); border-radius: 6px; border-left: 3px solid var(--green); }
 .context-text { font-size: 12.5px; line-height: 1.6; padding: 10px 12px; background: var(--card); border: 1px solid var(--border); border-radius: 6px; border-left: 3px solid var(--gold); color: var(--text); opacity: 0.9; }
+.method-text { font-size: 12.5px; line-height: 1.6; padding: 10px 12px; background: var(--card); border: 1px solid var(--border); border-radius: 6px; border-left: 3px solid var(--link); }
+.analysis-list { margin-left: 18px; color: var(--text); }
+.analysis-list li { margin-bottom: 6px; }
+.scaling-table { width: 100%; border-collapse: collapse; background: var(--card); border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.scaling-table th, .scaling-table td { padding: 10px 12px; border-bottom: 1px solid var(--border); text-align: left; font-family: var(--mono); font-size: 11px; }
+.scaling-table th { color: var(--muted); text-transform: uppercase; letter-spacing: 0.6px; }
+.scaling-table tr:last-child td { border-bottom: none; }
 .link-list { list-style: none; }
 .link-list li { margin-bottom: 4px; }
 .link-list a { color: var(--link); text-decoration: none; font-size: 12px; }
@@ -404,18 +453,26 @@ pre.code .comment { color: var(--muted); }
 </head>
 <body>
 <div class="header">
-    <h1>${BenchmarkResultPanel.esc(name)} ${sourceBadge}</h1>
-    ${p ? `<div class="category">${BenchmarkResultPanel.esc(p.category)}</div>` : ''}
+    <h1>${AnalysisReportPanel.esc(name)} ${sourceBadge}</h1>
+    ${p ? `<div class="category">${AnalysisReportPanel.esc(p.category)}</div>` : ''}
+    <div class="meta-row">
+        ${staticMeta.map(item => `<span class="meta-chip">${AnalysisReportPanel.esc(item)}</span>`).join('')}
+    </div>
 </div>
+
+<section class="section">
+    <h2>Static Analysis</h2>
+    ${explanation}
+</section>
 
 <div class="timing">
     <div class="timing-row">
-        <span class="timing-label">${BenchmarkResultPanel.esc(beforeLabel)}</span>
+        <span class="timing-label">${AnalysisReportPanel.esc(beforeLabel)}</span>
         <div class="timing-bar"><div class="timing-bar-fill slow" style="width:100%"></div></div>
         <span class="timing-val slow">${beforeMs} ms</span>
     </div>
     <div class="timing-row">
-        <span class="timing-label">${BenchmarkResultPanel.esc(afterLabel)}</span>
+        <span class="timing-label">${AnalysisReportPanel.esc(afterLabel)}</span>
         <div class="timing-bar"><div class="timing-bar-fill fast" style="width:${barW}%"></div></div>
         <span class="timing-val fast">${afterMs} ms</span>
     </div>
@@ -426,26 +483,54 @@ pre.code .comment { color: var(--muted); }
     ${note}
 </div>
 
-${explanation}
+<section class="section">
+    <h2>Dynamic Analysis</h2>
+    <p class="method-text">${AnalysisReportPanel.esc(dynamicMethod)}</p>
+</section>
 
 ${(beforeCode || afterCode) ? `
 <div class="diff">
     <div class="diff-col">
-        <div class="diff-header before"><span class="dot"></span> ${BenchmarkResultPanel.esc(beforeLabel)}</div>
+        <div class="diff-header before"><span class="dot"></span> ${AnalysisReportPanel.esc(beforeLabel)}</div>
         <pre class="code">${beforeCode}</pre>
     </div>
     <div class="diff-col">
-        <div class="diff-header after"><span class="dot"></span> ${BenchmarkResultPanel.esc(afterLabel)}</div>
+        <div class="diff-header after"><span class="dot"></span> ${AnalysisReportPanel.esc(afterLabel)}</div>
         <pre class="code">${afterCode}</pre>
     </div>
 </div>` : ''}
+
+<section class="section">
+    <h2>Dynamic Takeaways</h2>
+    <ul class="analysis-list">
+        ${scalingSummary.map(item => `<li>${AnalysisReportPanel.esc(item)}</li>`).join('')}
+    </ul>
+</section>
+
+<section class="section">
+    <h2>Scaling Profile</h2>
+    <table class="scaling-table">
+        <thead>
+            <tr>
+                <th>Size</th>
+                <th>${AnalysisReportPanel.esc(beforeLabel)}</th>
+                <th>${AnalysisReportPanel.esc(afterLabel)}</th>
+                <th>Speedup</th>
+                <th>Source</th>
+            </tr>
+        </thead>
+        <tbody>
+            ${scalingRows}
+        </tbody>
+    </table>
+</section>
 
 ${speedupCtx}
 ${fixHint}
 ${refs}
 ${reading}
 
-<div class="footer">LatenC - Speedup (up to) - actual results depend on data, compiler, and hardware</div>
+<div class="footer">LatenC combines static analysis to flag the pattern and dynamic analysis to quantify its runtime cost.</div>
 </body></html>`;
     }
 }
@@ -474,39 +559,40 @@ function formatNs(ns: number): string {
     return Math.round(ns) + 'ns';
 }
 
-// ── Fahh Sound ───────────────────────────────────────────
-
-let fahhSoundPath: string | undefined;
-
-/**
- * Play the bundled "fahh" sound effect.
- * Triggered when the benchmark comparison panel opens.
- */
-function playFahhSound(): void {
-    try {
-        if (!fahhSoundPath) {
-            // Resolve from bundled extension media
-            const ext = vscode.extensions.getExtension('dshak.LatenC');
-            if (ext) {
-                fahhSoundPath = path.join(ext.extensionPath, 'media', 'fahh.mp3');
-            } else {
-                // Fallback: resolve relative to compiled output
-                fahhSoundPath = path.join(__dirname, '..', 'media', 'fahh.mp3');
-            }
-        }
-        if (!fs.existsSync(fahhSoundPath)) { return; }
-
-        const platform = process.platform;
-        if (platform === 'darwin') {
-            execFile('afplay', [fahhSoundPath], () => {});
-        } else if (platform === 'linux') {
-            execFile('mpg123', ['-q', fahhSoundPath], () => {});
-        } else if (platform === 'win32') {
-            execFile('powershell', ['-c', `Add-Type -AssemblyName PresentationCore; $p=New-Object System.Windows.Media.MediaPlayer; $p.Open([Uri]'${fahhSoundPath}'); $p.Play(); Start-Sleep -s 3`], () => {});
-        }
-    } catch {
-        // Audio is non-critical, fail silently
+function describeSpeedupTrend(speedups: number[]): string {
+    if (speedups.length < 2) {
+        return 'Dynamic profile has one usable data point, so growth trends are limited.';
     }
+
+    const first = speedups[0];
+    const last = speedups[speedups.length - 1];
+    const delta = last - first;
+
+    if (Math.abs(delta) < 0.25) {
+        return `Speedup stays fairly stable across tested sizes (${first.toFixed(2)}× to ${last.toFixed(2)}×).`;
+    }
+    if (delta > 0) {
+        return `Fix impact grows with larger inputs (${first.toFixed(2)}× to ${last.toFixed(2)}×), which suggests the underlying cost compounds under load.`;
+    }
+    return `Fix impact is strongest at smaller inputs (${first.toFixed(2)}× to ${last.toFixed(2)}×), so the pattern matters most in shorter hot paths.`;
+}
+
+function describeSpeedupConsistency(speedups: number[]): string {
+    if (speedups.length === 0) {
+        return 'No reliable speedup measurements were available.';
+    }
+
+    const min = Math.min(...speedups);
+    const max = Math.max(...speedups);
+    const spread = max - min;
+
+    if (spread <= 0.5) {
+        return `Dynamic evidence is consistent across tested sizes (spread ${spread.toFixed(2)}×).`;
+    }
+    if (spread <= 1.5) {
+        return `Dynamic evidence varies moderately across tested sizes (spread ${spread.toFixed(2)}×), so data size meaningfully changes the payoff.`;
+    }
+    return `Dynamic evidence varies substantially across tested sizes (spread ${spread.toFixed(2)}×), which is a signal to profile this pattern against production-like workloads.`;
 }
 
 export function deactivate() {}
