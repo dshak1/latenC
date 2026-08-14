@@ -1,113 +1,44 @@
-LatenC (previously latency lens)
-See the cost of your C++ code!!!
+# latenC
 
+i was trying to get better at writing high performance c++ and actually thinking in tradeoffs, so i made a vs code extension that calls me out when the code is slow and then proves it.
 
-A VS Code extension that detects C++ performance antipatterns using treesitter AST analysis, explains why theyre slow, and runs real compiled benchmarks to prove it — with interactive visualizations. Zero external dependencies.
+mountain madness, software systems prize (the latency track). i wanted the computer to measure something, not a blog post about big-o.
 
+open a .cpp file. it walks the tree-sitter ast, flags antipatterns, explains why they miss cache or blow allocations, and if you click benchmark it compiles real c++ on your machine (or shows premeasured reference data if you have no compiler). zero external runtime deps. no python sidecar. no network.
 
-i been trying to learn how to get better at writing c++ that is high performance and getting used to thinking about/considering tradeoffs to have better designinstinct and knwoldge so i made this extension to do that 
+what it actually does
 
-![LatencyLens](https://img.shields.io/badge/C++Performanceblue?style=forthebadge&logo=cplusplus)
-![License](https://img.shields.io/badge/LicenseMITgreen?style=forthebadge)
+1. open a c++ file. parser lights up.
+2. squiggly warnings with the "why this is slow" note.
+3. click benchmark. clang++/g++ at O2, or the reference numbers if you cannot compile.
+4. dashboard: pattern explorer, scaling charts.
+5. optional: ai work advisor and regression triage. deterministic scoring, not vibes.
 
+patterns it looks for (speedups are upper bounds on synthetic benches, large N, O2)
 
+- std::map vs unordered_map: data structures, maybe 2-5x
+- std::list vs vector: cache locality, maybe 5-20x
+- push_back vs reserve + push_back: allocation, maybe 1.5-3x
+- virtual dispatch vs crtp: 2-5x
+- array of structs vs struct of arrays: 2-10x
+- branchy vs branchless: 2-4x
+- shared_ptr vs unique_ptr: 1.5-3x
+- false sharing vs cacheline padding: 2-10x
+- pass by value vs reference: 1.5-5x
+- std::pow vs multiply: 5-20x
+- std::endl vs \\n: 2-10x
+- loop .size() vs hoisted: 1.2-2x |
 
-what does it do tho??
-1. Open a C++ file > LatencyLens parses the AST and detects 12 performance antipatterns
-2. See inline diagnostics > Squiggly warnings with explanations of why each pattern is slow
-3. Click ⚡ Benchmark > Compiles real C++ on your machine (or shows premeasured reference data)
-4. Open the Dashboard > Interactive pattern explorer, code analyzer, scaling charts
-5. Use AI Work Advisor + Regression Triage > Deterministic workload scoring and benchmark regression diagnosis
+run your own hardware if you want numbers you can defend.
 
-No simulation. No estimates. Real compiled C++ benchmarks.
+install
 
-
-
-## Patterns Detected
-
-| Pattern | Category | Speedup (up to) |
-| std::map > std::unordered_map | Data Structures | 2–5× |
-| std::list > std::vector | Cache Locality | 5–20× |
-| push_back > reserve + push_back | Memory Allocation | 1.5–3× |
-| Virtual dispatch > CRTP | Devirtualization | 2–5× |
-| Array of Structs > Struct of Arrays | Cache Optimization | 2–10× |
-| Branchy > Branchless | Branch Prediction | 2–4× |
-| shared_ptr > unique_ptr | Smart Pointers | 1.5–3× |
-| False sharing > Cacheline padding | Concurrency | 2–10× |
-| Pass by value > Pass by reference | Function Calls | 1.5–5× |
-| std::pow > Multiply | Math | 5–20× |
-| std::endl > \n | I/O | 2–10× |
-| Loop .size() > Hoisted variable | Loops | 1.2–2× |
-
-Note: Speedups are upper bounds measured on synthetic benchmarks with large N and optimized compilation (O2). Real-world gains depend on data size, access patterns, and compiler optimizations. Run ⚡ Benchmark on your own hardware to see actual numbers.
-
-
-
-
-run this in bash to. install on vscode
+```
 code --install-extension extension/latencylens-0.2.0.vsix
+```
 
-Open a .cpp file; LatencyLens activates automatically
+vs code 1.85+. clang++ or g++ optional for live benches.
 
+architecture, tired version: native c++ analyzer binary does the real work. treesitter wasm is the fallback. typescript is just the bridge into the editor and the webview. c++ analyzing c++. that was the point.
 
-Requirements: VS Code 1.85+. Thats it.
-Optional: clang++ or g++ for live benchmarks (otherwise uses reference data).
-
-
-
-Architecture
-VS Code Extension
-├── Native C++ analyzer (ll_analyzer binary)
-│   └── 20 contextaware pattern detectors in C++17
-│   └── Scope tracking, comment stripping, crossline analysis
-├── treesitter WASM parser (fallback)
-│   └── treesittercpp grammar
-├── Dualmode benchmark runner
-│   ├── Local: compiles real C++ with clang++/g++ O2
-│   └── Reference: premeasured data (honestly labeled)
-├── TypeScript bridge (invokes C++ binary, merges results)
-└── Webview dashboard (Chart.js)
-
-
-C++ analyzing C++. The core computation is native. No Python. No server. No network calls.
-
-
-
-Project Structure
-latencylens/
-├── extension/                  # VS Code extension (v0.2.0)
-│   ├── cpp/
-│   │   └── analyzer.cpp        # Native C++ analysis engine
-│   ├── src/
-│   │   ├── extension.ts        # Entry point, activation
-│   │   ├── analyzer.ts         # Hybrid: native C++ > treesitter > regex
-│   │   ├── nativeAnalyzer.ts   # Bridge to C++ binary (subprocess)
-│   │   ├── astAnalyzer.ts      # Treesitter AST fallback
-│   │   ├── patterns.ts         # Pattern definitions + reference data
-│   │   ├── benchmarkRunner.ts  # Dualmode benchmark execution
-│   │   ├── dashboard.ts        # Webview panel (postMessage API)
-│   │   └── codelens.ts         # CodeLens provider
-│   ├── wasm/                   # Treesitter WASM binaries (fallback)
-│   ├── scripts/
-│   │   └── buildanalyzer.sh   # Builds the C++ analyzer binary
-│   └── package.json
-├── examples/
-│   └── sample.cpp              # File with antipatterns for testing
-└── _legacy/                    # Deprecated v0.1.0 proofofconcept
-    ├── server/                 # Flask/regex backend (superseded)
-    ├── web/                    # Standalone browser dashboard
-    └── run.sh
-
-
-
-
-
-Reliability & Workshop Extensions
-
- AI Work Advisor (deterministic): Recommends map strategy from operation percentages, value size, map lifetime, clear frequency, and repeatedID rate.
- Regression Triage Assistant: Compares baseline/current throughput, p99 latency, and error rate, then emits severity + likely causes + next actions.
- CI Regression Guard: .github/workflows/ci.yml runs extension build + infra/benchmark_regression_guard.js threshold checks for benchmark snapshots.
- Workshop Assets: workshop/WORKSHOP_PLAN.md and workshop/SLIDES.md provide a 3level educational flow (baseline, optimization, production specialization).
-
-
-
+reliability extras that survived the hackathon: deterministic work advisor, regression triage, a ci guard on benchmark snapshots, workshop slides if you want to teach it.
